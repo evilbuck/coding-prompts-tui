@@ -5,25 +5,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-)
 
-// FileItem represents a file or directory in the tree
-type FileItem struct {
-	Name     string
-	Path     string
-	IsDir    bool
-	Selected bool
-	Expanded bool
-	Level    int
-	Children []*FileItem
-}
+	"coding-prompts-tui/internal/filesystem"
+)
 
 // FileTreeModel represents the file tree panel
 type FileTreeModel struct {
-	targetDir string
-	items     []*FileItem
-	cursor    int
-	title     string
+	targetDir    string
+	rootNode     *filesystem.FileNode
+	items        []filesystem.FileTreeItem
+	cursor       int
+	title        string
+	expanded     map[string]bool
+	selected     map[string]bool
 }
 
 // NewFileTreeModel creates a new file tree model
@@ -31,22 +25,47 @@ func NewFileTreeModel(targetDir string) *FileTreeModel {
 	return &FileTreeModel{
 		targetDir: targetDir,
 		title:     "📁 File Tree",
-		items:     []*FileItem{},
+		items:     []filesystem.FileTreeItem{},
 		cursor:    0,
+		expanded:  make(map[string]bool),
+		selected:  make(map[string]bool),
 	}
 }
 
 // Init initializes the file tree model
 func (m *FileTreeModel) Init() tea.Cmd {
-	// TODO: Load directory structure
-	// For now, add some placeholder items
-	m.items = []*FileItem{
-		{Name: "src", Path: "src", IsDir: true, Level: 0, Expanded: false},
-		{Name: "main.go", Path: "main.go", IsDir: false, Level: 0},
-		{Name: "README.md", Path: "README.md", IsDir: false, Level: 0},
-		{Name: "go.mod", Path: "go.mod", IsDir: false, Level: 0},
+	// Scan the target directory
+	rootNode, err := filesystem.ScanDirectory(m.targetDir)
+	if err != nil {
+		// If we can't scan the directory, create a simple error item
+		m.items = []filesystem.FileTreeItem{
+			{Name: "Error: " + err.Error(), Path: "", IsDir: false, Level: 0},
+		}
+		return nil
 	}
+	
+	m.rootNode = rootNode
+	m.refreshItems()
 	return nil
+}
+
+// refreshItems rebuilds the flattened item list based on current expanded state
+func (m *FileTreeModel) refreshItems() {
+	if m.rootNode == nil {
+		m.items = []filesystem.FileTreeItem{}
+		return
+	}
+	
+	// Add the root directory items (not the root itself, but its children)
+	m.items = []filesystem.FileTreeItem{}
+	for _, child := range m.rootNode.Children {
+		childItems := filesystem.FlattenTree(child, 0, m.expanded)
+		// Update selected state from our local state
+		for i := range childItems {
+			childItems[i].Selected = m.selected[childItems[i].Path]
+		}
+		m.items = append(m.items, childItems...)
+	}
 }
 
 // Update handles messages for the file tree
@@ -65,17 +84,46 @@ func (m *FileTreeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Toggle directory expansion
 			if m.cursor < len(m.items) && m.items[m.cursor].IsDir {
-				m.items[m.cursor].Expanded = !m.items[m.cursor].Expanded
-				// TODO: Load/hide children
+				currentItem := m.items[m.cursor]
+				m.expanded[currentItem.Path] = !m.expanded[currentItem.Path]
+				m.refreshItems()
+				// Return a file selection message to communicate with other panels
+				return m, m.sendFileSelectionUpdate()
 			}
 		case " ":
 			// Toggle file selection (only for files, not directories)
 			if m.cursor < len(m.items) && !m.items[m.cursor].IsDir {
-				m.items[m.cursor].Selected = !m.items[m.cursor].Selected
+				currentItem := m.items[m.cursor]
+				m.selected[currentItem.Path] = !m.selected[currentItem.Path]
+				m.refreshItems()
+				// Return a file selection message to communicate with other panels
+				return m, m.sendFileSelectionUpdate()
 			}
 		}
 	}
 	return m, nil
+}
+
+// FileSelectionMsg represents a message about file selection changes
+type FileSelectionMsg struct {
+	SelectedFiles map[string]bool
+}
+
+// sendFileSelectionUpdate creates a file selection update message
+func (m *FileTreeModel) sendFileSelectionUpdate() tea.Cmd {
+	return func() tea.Msg {
+		return FileSelectionMsg{SelectedFiles: m.selected}
+	}
+}
+
+// GetSelectedFiles returns the currently selected files
+func (m *FileTreeModel) GetSelectedFiles() map[string]bool {
+	return m.selected
+}
+
+// GetItems returns the current items for testing
+func (m *FileTreeModel) GetItems() []filesystem.FileTreeItem {
+	return m.items
 }
 
 // View renders the file tree
@@ -113,7 +161,7 @@ func (m *FileTreeModel) View() string {
 
 		// Icon and expansion indicator
 		if item.IsDir {
-			if item.Expanded {
+			if m.expanded[item.Path] {
 				line.WriteString("📂 ")
 			} else {
 				line.WriteString("📁 ")

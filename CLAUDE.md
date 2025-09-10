@@ -156,3 +156,8 @@ Expected Go dependencies:
 - Consider implementing file type filtering (e.g., ignore binary files)
 - Respect common ignore patterns (.git, node_modules, etc.)
 - Allow configuration of maximum file size limits
+
+## Project Documentation
+
+The project documentation for usage and architecture, other than the README.md is in the root docs folder as markdown.
+Always prompt to create documentation after each set of tasks.

@@ -51,7 +51,10 @@ func (m *SelectedFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "delete", "backspace", "x":
 			// Remove selected file
 			if len(m.files) > 0 && m.cursor < len(m.files) {
+				removedFile := m.files[m.cursor]
 				m.removeFile(m.cursor)
+				// Send a message to update the file tree selection state
+				return m, m.sendFileDeselectionUpdate(removedFile.Path)
 			}
 		}
 	}
@@ -163,4 +166,16 @@ func (m *SelectedFilesModel) removeFile(index int) {
 // GetSelectedFiles returns the list of selected files
 func (m *SelectedFilesModel) GetSelectedFiles() []SelectedFile {
 	return m.files
+}
+
+// FileDeselectionMsg represents a message about file deselection
+type FileDeselectionMsg struct {
+	FilePath string
+}
+
+// sendFileDeselectionUpdate creates a file deselection update message
+func (m *SelectedFilesModel) sendFileDeselectionUpdate(filePath string) tea.Cmd {
+	return func() tea.Msg {
+		return FileDeselectionMsg{FilePath: filePath}
+	}
 }

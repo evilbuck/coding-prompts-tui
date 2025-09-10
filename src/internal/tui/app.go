@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"path/filepath"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -53,6 +55,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		return a, nil
+
+	case FileSelectionMsg:
+		// Update selected files panel when file selection changes
+		a.updateSelectedFilesFromSelection(msg.SelectedFiles)
+		return a, nil
+
+	case FileDeselectionMsg:
+		// Update file tree selection state when file is removed from selected files
+		a.fileTree.selected[msg.FilePath] = false
+		a.fileTree.refreshItems()
 		return a, nil
 
 	case tea.KeyMsg:
@@ -165,5 +178,25 @@ func (a *App) prevPanel() {
 		a.focused = FileTreePanel
 	case ChatPanel:
 		a.focused = SelectedFilesPanel
+	}
+}
+
+// updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
+func (a *App) updateSelectedFilesFromSelection(selectedFiles map[string]bool) {
+	// Clear current selection
+	a.selectedFiles.files = []SelectedFile{}
+	
+	// Add all currently selected files
+	for path, selected := range selectedFiles {
+		if selected {
+			a.selectedFiles.AddFile(filepath.Base(path), path)
+		}
+	}
+	
+	// Reset cursor if needed
+	if len(a.selectedFiles.files) == 0 {
+		a.selectedFiles.cursor = 0
+	} else if a.selectedFiles.cursor >= len(a.selectedFiles.files) {
+		a.selectedFiles.cursor = len(a.selectedFiles.files) - 1
 	}
 }
