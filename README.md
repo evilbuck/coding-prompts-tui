@@ -253,3 +253,4 @@ go test -cover ./...
 - [ ] Configuration file support
 - [ ] Multiple export formats
 - [ ] Syntax highlighting in file preview
+# coding-prompts-tui
