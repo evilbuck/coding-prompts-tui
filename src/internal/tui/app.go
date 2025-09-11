@@ -2,7 +2,9 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 
+	"coding-prompts-tui/internal/prompt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -18,13 +20,15 @@ const (
 
 // App represents the main application model
 type App struct {
-	targetDir    string
-	width        int
-	height       int
-	focused      FocusedPanel
-	fileTree     *FileTreeModel
-	selectedFiles *SelectedFilesModel
-	chat         *ChatModel
+	targetDir      string
+	width          int
+	height         int
+	focused        FocusedPanel
+	fileTree       *FileTreeModel
+	selectedFiles  *SelectedFilesModel
+	chat           *ChatModel
+	showPrompt     bool
+	generatedPrompt string
 }
 
 // NewApp creates a new application instance
@@ -69,6 +73,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
+		if a.showPrompt {
+			switch msg.String() {
+			case "ctrl+c", "q", "enter", "esc":
+				a.showPrompt = false
+			}
+			return a, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return a, tea.Quit
@@ -77,6 +89,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "shift+tab":
 			a.prevPanel()
+			return a, nil
+		case "ctrl+s":
+			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
+			if err != nil {
+				// Handle error, maybe show an error message
+				// For now, we'll just log it
+				// log.Printf("Error building prompt: %v", err)
+			} else {
+				a.generatedPrompt = generatedPrompt
+				a.showPrompt = true
+			}
 			return a, nil
 		}
 	}
@@ -106,6 +129,17 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
+	// Main layout
+	mainLayout := a.mainLayout()
+
+	if a.showPrompt {
+		return a.renderPromptDialog(mainLayout)
+	}
+
+	return mainLayout
+}
+
+func (a *App) mainLayout() string {
 	// Calculate panel dimensions
 	topHeight := int(float64(a.height) * 0.66)
 	bottomHeight := a.height - topHeight
@@ -153,9 +187,47 @@ func (a *App) View() string {
 
 	// Layout the panels
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel)
 }
+
+func (a *App) renderPromptDialog(background string) string {
+	dialogWidth := int(float64(a.width) * 0.8)
+	dialogHeight := int(float64(a.height) * 0.8)
+
+	dialogStyle := lipgloss.NewStyle().
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(lipgloss.Color("228")).
+		Padding(1, 2).
+		Width(dialogWidth).
+		Height(dialogHeight)
+
+	// Simple word wrapping
+	content := lipgloss.NewStyle().Width(dialogWidth - 4).Render(a.generatedPrompt)
+	
+	// Truncate if too long
+	lines := strings.Split(content, "\n")
+	if len(lines) > dialogHeight-2 {
+		lines = lines[:dialogHeight-2]
+		content = strings.Join(lines, "\n") + "\n..."
+	}
+
+
+	dialog := dialogStyle.Render(content)
+
+	// Center the dialog
+	x := (a.width - dialogWidth) / 2
+	y := (a.height - dialogHeight) / 2
+
+	return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center,
+		lipgloss.JoinVertical(lipgloss.Top,
+			lipgloss.NewStyle().Padding(y, x).Render(dialog),
+		),
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceForeground(lipgloss.Color("237")),
+	)
+}
+
 
 // nextPanel moves focus to the next panel
 func (a *App) nextPanel() {
@@ -185,14 +257,14 @@ func (a *App) prevPanel() {
 func (a *App) updateSelectedFilesFromSelection(selectedFiles map[string]bool) {
 	// Clear current selection
 	a.selectedFiles.files = []SelectedFile{}
-	
+
 	// Add all currently selected files
 	for path, selected := range selectedFiles {
 		if selected {
 			a.selectedFiles.AddFile(filepath.Base(path), path)
 		}
 	}
-	
+
 	// Reset cursor if needed
 	if len(a.selectedFiles.files) == 0 {
 		a.selectedFiles.cursor = 0

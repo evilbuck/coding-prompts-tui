@@ -39,7 +39,7 @@ func ScanDirectory(rootPath string) (*FileNode, error) {
 
 	for _, entry := range entries {
 		// Skip hidden files and common ignore patterns
-		if shouldIgnore(entry.Name()) {
+		if ShouldIgnore(entry.Name()) {
 			continue
 		}
 
@@ -56,8 +56,8 @@ func ScanDirectory(rootPath string) (*FileNode, error) {
 	return root, nil
 }
 
-// shouldIgnore determines if a file or directory should be ignored
-func shouldIgnore(name string) bool {
+// ShouldIgnore determines if a file or directory should be ignored
+func ShouldIgnore(name string) bool {
 	// Common ignore patterns
 	ignorePatterns := []string{
 		".",        // Hidden files (starting with .)
