@@ -16,7 +16,6 @@ type FocusedPanel int
 
 const (
 	FileTreePanel FocusedPanel = iota
-	SelectedFilesPanel
 	ChatPanel
 )
 
@@ -167,13 +166,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, cmd := a.fileTree.Update(msg)
 		a.fileTree = model.(*FileTreeModel)
 		cmds = append(cmds, cmd)
-	case SelectedFilesPanel:
-		model, cmd := a.selectedFiles.Update(msg)
-		a.selectedFiles = model.(*SelectedFilesModel)
-		cmds = append(cmds, cmd)
 	case ChatPanel:
 		model, cmd := a.chat.Update(msg)
 		a.chat = model.(*ChatModel)
+		cmds = append(cmds, cmd)
+	default:
+		// Handle invalid focus state - reset to FileTreePanel
+		a.focused = FileTreePanel
+		model, cmd := a.fileTree.Update(msg)
+		a.fileTree = model.(*FileTreeModel)
 		cmds = append(cmds, cmd)
 	}
 
@@ -233,12 +234,8 @@ func (a *App) mainLayout() string {
 		Height(topHeight - 2).
 		Render(a.fileTree.View())
 
-	// Selected files panel (top-right)
-	selectedStyle := normalBorder
-	if a.focused == SelectedFilesPanel {
-		selectedStyle = focusedBorder
-	}
-	selectedPanel := selectedStyle.
+	// Selected files panel (top-right) - always uses normal border since it's not focusable
+	selectedPanel := normalBorder.
 		Width(rightWidth - 2).
 		Height(topHeight - 2).
 		Render(a.selectedFiles.View())
@@ -281,10 +278,11 @@ func (a *App) overlayNotification(content string) string {
 func (a *App) nextPanel() {
 	switch a.focused {
 	case FileTreePanel:
-		a.focused = SelectedFilesPanel
-	case SelectedFilesPanel:
 		a.focused = ChatPanel
 	case ChatPanel:
+		a.focused = FileTreePanel
+	default:
+		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
 	}
 }
@@ -294,10 +292,11 @@ func (a *App) prevPanel() {
 	switch a.focused {
 	case FileTreePanel:
 		a.focused = ChatPanel
-	case SelectedFilesPanel:
-		a.focused = FileTreePanel
 	case ChatPanel:
-		a.focused = SelectedFilesPanel
+		a.focused = FileTreePanel
+	default:
+		// Reset to FileTreePanel if focus state is invalid
+		a.focused = FileTreePanel
 	}
 }
 
