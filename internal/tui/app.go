@@ -2,12 +2,10 @@ package tui
 
 import (
 	"path/filepath"
-	"time"
 
 	"coding-prompts-tui/internal/config"
 	"coding-prompts-tui/internal/prompt"
 	"github.com/atotto/clipboard"
-	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"go.dalton.dog/bubbleup"
@@ -22,12 +20,6 @@ const (
 	ChatPanel
 )
 
-// Notification message types
-type ShowNotificationMsg struct {
-	text string
-}
-
-type HideNotificationMsg struct{}
 
 // App represents the main application model
 type App struct {
@@ -39,30 +31,29 @@ type App struct {
 	selectedFiles       *SelectedFilesModel
 	chat                *ChatModel
 	promptDialog        *PromptDialogModel
-	notificationText    string
-	notificationVisible bool
-	notificationTimer   timer.Model
 	alertModel          bubbleup.AlertModel
 	configManager       *config.ConfigManager
+	settingsManager     *config.SettingsManager
 	workspace           *config.WorkspaceState
 }
 
 // NewApp creates a new application instance
-func NewApp(targetDir string, cfgManager *config.ConfigManager, workspace *config.WorkspaceState) *App {
+func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager *config.SettingsManager, workspace *config.WorkspaceState) *App {
 	fileTree := NewFileTreeModel(targetDir, workspace.SelectedFiles)
 	selectedFiles := NewSelectedFilesModel()
 	chat := NewChatModel(workspace.ChatInput)
 
 	app := &App{
-		targetDir:     targetDir,
-		focused:       FileTreePanel,
-		fileTree:      fileTree,
-		selectedFiles: selectedFiles,
-		chat:          chat,
-		promptDialog:  NewPromptDialogModel(),
-		alertModel:    *bubbleup.NewAlertModel(5, true),
-		configManager: cfgManager,
-		workspace:     workspace,
+		targetDir:       targetDir,
+		focused:         FileTreePanel,
+		fileTree:        fileTree,
+		selectedFiles:   selectedFiles,
+		chat:            chat,
+		promptDialog:    NewPromptDialogModel(),
+		alertModel:      *bubbleup.NewAlertModel(5, true),
+		configManager:   cfgManager,
+		settingsManager: settingsManager,
+		workspace:       workspace,
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
 	return app
@@ -155,21 +146,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.configManager.Save()
 		return a, nil
 
-	case ShowNotificationMsg:
-		a.notificationText = msg.text
-		a.notificationVisible = true
-		a.notificationTimer = timer.New(750 * time.Millisecond)
-		return a, a.notificationTimer.Init()
-
-	case timer.TimeoutMsg:
-		if a.notificationTimer.ID() == msg.ID {
-			a.notificationVisible = false
-		}
-		return a, nil
-
-	case HideNotificationMsg:
-		a.notificationVisible = false
-		return a, nil
 
 	case tea.KeyMsg:
 		// Handle global clipboard copy first
@@ -181,9 +157,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
 				if err != nil {
 					// Show error notification
-					return a, tea.Cmd(func() tea.Msg {
-						return ShowNotificationMsg{text: "error building prompt"}
-					})
+					alertCmd := a.alertModel.NewAlertCmd(bubbleup.ErrorKey, "error building prompt")
+					return a, alertCmd
 				}
 				promptToCopy = generatedPrompt
 			}
@@ -191,15 +166,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			err := clipboard.WriteAll(promptToCopy)
 			if err != nil {
 				// Show error notification
-				return a, tea.Cmd(func() tea.Msg {
-					return ShowNotificationMsg{text: "clipboard error"}
-				})
+				alertCmd := a.alertModel.NewAlertCmd(bubbleup.ErrorKey, "clipboard error")
+				return a, alertCmd
 			}
 
 			// Show success notification
-			return a, tea.Cmd(func() tea.Msg {
-				return ShowNotificationMsg{text: "prompt copied"}
-			})
+			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "prompt copied")
+			return a, alertCmd
 		}
 
 		// Handle prompt dialog input if visible
@@ -218,7 +191,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			a.prevPanel()
 			return a, nil
-		case "x":
+		case a.settingsManager.GetMenuActivationKey():
 			// Activate menu - show notification
 			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
 			return a, alertCmd
@@ -347,7 +320,7 @@ func (a *App) mainLayout() string {
 		Height(1).
 		Padding(0, 2)
 	
-	footerContent := "menu (x)"
+	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ")"
 	footer := footerStyle.Render(footerContent)
 
 	// Layout the panels
@@ -356,23 +329,6 @@ func (a *App) mainLayout() string {
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel, footer)
 }
 
-// overlayNotification renders the notification overlay on top of the given content
-func (a *App) overlayNotification(content string) string {
-	notification := lipgloss.NewStyle().
-		Background(lipgloss.Color("2")).
-		Foreground(lipgloss.Color("15")).
-		Padding(0, 1).
-		Bold(true).
-		Render(a.notificationText)
-	
-	// Position notification at the top center
-	return lipgloss.Place(a.width, a.height,
-		lipgloss.Center, lipgloss.Top,
-		notification,
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceForeground(lipgloss.AdaptiveColor{Light: "0", Dark: "0"}),
-	) + "\n" + content
-}
 
 // nextPanel moves focus to the next panel
 func (a *App) nextPanel() {
