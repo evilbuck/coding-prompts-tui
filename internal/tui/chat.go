@@ -8,6 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ChatInputMsg is a message sent when the chat input changes.
+type ChatInputMsg struct {
+	Content string
+}
+
 // ChatModel represents the chat input panel
 type ChatModel struct {
 	title    string
@@ -15,9 +20,10 @@ type ChatModel struct {
 }
 
 // NewChatModel creates a new chat model
-func NewChatModel() *ChatModel {
+func NewChatModel(initialValue string) *ChatModel {
 	ta := textarea.New()
 	ta.Placeholder = "Enter your prompt for the LLM here..."
+	ta.SetValue(initialValue)
 	ta.Focus()
 
 	return &ChatModel{
@@ -34,9 +40,15 @@ func (m *ChatModel) Init() tea.Cmd {
 // Update handles messages for the chat panel
 func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
 
+	// Note: The tea.KeyMsg is handled by the textarea, which updates its value.
+	// The main app model is responsible for checking if the value has changed
+	// and dispatching a ChatInputMsg.
 	m.textarea, cmd = m.textarea.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 // View renders the chat input panel

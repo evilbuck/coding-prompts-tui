@@ -9,7 +9,7 @@ import (
 
 func TestFileTreeHeaderCalculation(t *testing.T) {
 	// Create a new file tree model
-	model := NewFileTreeModel("/tmp")
+	model := NewFileTreeModel("/tmp", []string{})
 	
 	// Set a reasonable width for testing
 	model.width = 50
@@ -35,7 +35,7 @@ func TestFileTreeHeaderCalculation(t *testing.T) {
 }
 
 func TestViewportSizing(t *testing.T) {
-	model := NewFileTreeModel("/tmp")
+	model := NewFileTreeModel("/tmp", []string{})
 	
 	// Set panel dimensions
 	panelWidth := 40
@@ -62,7 +62,7 @@ func TestViewportSizing(t *testing.T) {
 }
 
 func TestEnsureVisibleBounds(t *testing.T) {
-	model := NewFileTreeModel("/tmp")
+	model := NewFileTreeModel("/tmp", []string{})
 	model.width = 40
 	model.height = 20
 	

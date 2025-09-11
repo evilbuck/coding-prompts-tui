@@ -26,15 +26,20 @@ type FileTreeModel struct {
 }
 
 // NewFileTreeModel creates a new file tree model
-func NewFileTreeModel(targetDir string) *FileTreeModel {
-    return &FileTreeModel{
-        targetDir: targetDir,
-        title:     "📁 File Tree",
-        items:     []filesystem.FileTreeItem{},
-        cursor:    0,
-        expanded:  make(map[string]bool),
-        selected:  make(map[string]bool),
-    }
+func NewFileTreeModel(targetDir string, initialSelection []string) *FileTreeModel {
+	selected := make(map[string]bool)
+	for _, f := range initialSelection {
+		selected[f] = true
+	}
+
+	return &FileTreeModel{
+		targetDir: targetDir,
+		title:     "📁 File Tree",
+		items:     []filesystem.FileTreeItem{},
+		cursor:    0,
+		expanded:  make(map[string]bool),
+		selected:  selected,
+	}
 }
 
 // Init initializes the file tree model
