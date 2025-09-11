@@ -5,6 +5,7 @@ import (
 
 	"coding-prompts-tui/internal/config"
 	"coding-prompts-tui/internal/prompt"
+
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,21 +21,20 @@ const (
 	ChatPanel
 )
 
-
 // App represents the main application model
 type App struct {
-	targetDir           string
-	width               int
-	height              int
-	focused             FocusedPanel
-	fileTree            *FileTreeModel
-	selectedFiles       *SelectedFilesModel
-	chat                *ChatModel
-	promptDialog        *PromptDialogModel
-	alertModel          bubbleup.AlertModel
-	configManager       *config.ConfigManager
-	settingsManager     *config.SettingsManager
-	workspace           *config.WorkspaceState
+	targetDir       string
+	width           int
+	height          int
+	focused         FocusedPanel
+	fileTree        *FileTreeModel
+	selectedFiles   *SelectedFilesModel
+	chat            *ChatModel
+	promptDialog    *PromptDialogModel
+	alertModel      bubbleup.AlertModel
+	configManager   *config.ConfigManager
+	settingsManager *config.SettingsManager
+	workspace       *config.WorkspaceState
 }
 
 // NewApp creates a new application instance
@@ -50,7 +50,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		selectedFiles:   selectedFiles,
 		chat:            chat,
 		promptDialog:    NewPromptDialogModel(),
-		alertModel:      *bubbleup.NewAlertModel(5, true),
+		alertModel:      *bubbleup.NewAlertModel(40, true), // Will be updated dynamically on window resize
 		configManager:   cfgManager,
 		settingsManager: settingsManager,
 		workspace:       workspace,
@@ -78,6 +78,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 		a.promptDialog.SetSize(msg.Width, msg.Height)
+
+		// Update notification width to 30% of interface width, with reasonable bounds
+		notificationWidth := int(float64(msg.Width) * 0.3)
+		if notificationWidth < 20 {
+			notificationWidth = 20 // Minimum width for readability
+		} else if notificationWidth > 80 {
+			notificationWidth = 80 // Maximum width to prevent overly wide notifications
+		}
+
+		// Create new AlertModel with updated width
+		a.alertModel = *bubbleup.NewAlertModel(notificationWidth, true)
+
 		// Propagate calculated panel sizes to sub-models that need them
 		// These calculations must match exactly what mainLayout() gives to the border
 		footerHeight := 3 // Single line footer with padding
@@ -146,7 +158,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.configManager.Save()
 		return a, nil
 
-
 	case tea.KeyMsg:
 		// Handle global clipboard copy first
 		if msg.String() == "ctrl+y" {
@@ -182,6 +193,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
+		// TODO: change these to pull from the settingsManager
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return a, tea.Quit
@@ -316,10 +328,10 @@ func (a *App) mainLayout() string {
 	footerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
-		Width(a.width - 2).
+		Width(a.width-2).
 		Height(1).
 		Padding(0, 2)
-	
+
 	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ")"
 	footer := footerStyle.Render(footerContent)
 
@@ -328,7 +340,6 @@ func (a *App) mainLayout() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel, footer)
 }
-
 
 // nextPanel moves focus to the next panel
 func (a *App) nextPanel() {
@@ -378,7 +389,7 @@ func (a *App) handleMouseClick(x, y int) {
 			// Click is in the right half (selected files panel)
 			a.focused = SelectedFilesPanel
 		}
-	} else if y < topHeight + bottomHeight {
+	} else if y < topHeight+bottomHeight {
 		// Click is in the chat area
 		a.focused = ChatPanel
 	}
