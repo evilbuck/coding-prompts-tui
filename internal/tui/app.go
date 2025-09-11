@@ -103,7 +103,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		// Handle global clipboard copy first
-		if msg.String() == "ctrl+shift+c" {
+		if msg.String() == "ctrl+y" {
 			var promptToCopy string
 			if a.promptDialog.IsVisible() && a.promptDialog.GetContent() != "" {
 				promptToCopy = a.promptDialog.GetContent()

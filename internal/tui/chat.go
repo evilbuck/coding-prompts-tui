@@ -54,7 +54,7 @@ func (m *ChatModel) View() string {
 	helpStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
 		Italic(true)
-	b.WriteString(helpStyle.Render("Enter your prompt below. Ctrl+S to generate XML prompt"))
+	b.WriteString(helpStyle.Render("Enter your prompt below. Ctrl+S to generate XML prompt, Ctrl+Y to copy"))
 	b.WriteString("\n\n")
 
 	// Textarea
