@@ -24,6 +24,13 @@ func TestBuild(t *testing.T) {
 		t.Fatalf("Failed to write dummy system prompt: %v", err)
 	}
 
+	// Create a dummy overview file
+	overviewContent := "This is the project overview."
+	err = os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(overviewContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write dummy overview file: %v", err)
+	}
+
 	// 2. Create some dummy files and directories to build a tree
 	file1Content := "hello world"
 	err = os.WriteFile(filepath.Join(tmpDir, "testfile1.txt"), []byte(file1Content), 0644)
@@ -53,7 +60,7 @@ func TestBuild(t *testing.T) {
 
 	// 3. Define the inputs for the Build function
 	selectedFiles := map[string]bool{
-		filepath.Join(tmpDir, "testfile1.txt"): true,
+		filepath.Join(tmpDir, "testfile1.txt"):             true,
 		filepath.Join(tmpDir, "subdir", "testfile2.txt"): false, // This one is not selected
 	}
 	userPrompt := "This is a test user prompt."
@@ -98,8 +105,13 @@ func TestBuild(t *testing.T) {
 		t.Error("XML should not contain file element for unselected file 'subdir/testfile2.txt'")
 	}
 
+	// Check for overview system prompt
+	expectedOverviewPrompt := `<SystemPrompt type="project-overview"><![CDATA[This is the project overview.]]></SystemPrompt>`
+	if !strings.Contains(xmlOutput, expectedOverviewPrompt) {
+		t.Errorf("Expected XML to contain the overview prompt.\nGot:\n%s\nExpected to contain:\n%s", xmlOutput, expectedOverviewPrompt)
+	}
 
-	// Check for system prompt
+	// Check for default system prompt
 	expectedSystemPrompt := `<SystemPrompt><![CDATA[You are a test assistant.]]></SystemPrompt>`
 	if !strings.Contains(xmlOutput, expectedSystemPrompt) {
 		t.Errorf("Expected XML to contain the system prompt.\nGot:\n%s\nExpected to contain:\n%s", xmlOutput, expectedSystemPrompt)
@@ -131,9 +143,26 @@ func TestBuild(t *testing.T) {
 	if prompt.Files[0].Content != "hello world" {
 		t.Errorf("Expected file content 'hello world', got '%s'", prompt.Files[0].Content)
 	}
-	if prompt.SystemPrompt.Text != "You are a test assistant." {
-		t.Errorf("Expected system prompt 'You are a test assistant.', got '%s'", prompt.SystemPrompt.Text)
+	if len(prompt.SystemPrompt) != 2 {
+		t.Fatalf("Expected 2 system prompts, got %d", len(prompt.SystemPrompt))
 	}
+	// Note: order is not guaranteed by map iteration, so we check both
+	overviewPrompt := prompt.SystemPrompt[0]
+	defaultPrompt := prompt.SystemPrompt[1]
+
+	if overviewPrompt.Type != "project-overview" {
+		t.Errorf("Expected first system prompt to have type 'project-overview', got '%s'", overviewPrompt.Type)
+	}
+	if overviewPrompt.Content != "This is the project overview." {
+		t.Errorf("Expected overview prompt content 'This is the project overview.', got '%s'", overviewPrompt.Content)
+	}
+	if defaultPrompt.Type != "" {
+		t.Errorf("Expected second system prompt to have no type, got '%s'", defaultPrompt.Type)
+	}
+	if defaultPrompt.Content != "You are a test assistant." {
+		t.Errorf("Expected system prompt 'You are a test assistant.', got '%s'", defaultPrompt.Content)
+	}
+
 	if prompt.UserPrompt.Text != "This is a test user prompt." {
 		t.Errorf("Expected user prompt 'This is a test user prompt.', got '%s'", prompt.UserPrompt.Text)
 	}
@@ -143,7 +172,7 @@ func TestBuildErrorConditions(t *testing.T) {
 	t.Run("invalid root path", func(t *testing.T) {
 		selectedFiles := map[string]bool{}
 		userPrompt := "test prompt"
-		
+
 		_, err := Build("/nonexistent/path", selectedFiles, userPrompt)
 		if err == nil {
 			t.Error("Expected error for invalid root path, got nil")
@@ -152,7 +181,7 @@ func TestBuildErrorConditions(t *testing.T) {
 
 	t.Run("invalid selected file path", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		// Create personas directory with default.md
 		personasDir := filepath.Join(tmpDir, "personas")
 		err := os.Mkdir(personasDir, 0755)
@@ -168,7 +197,7 @@ func TestBuildErrorConditions(t *testing.T) {
 			"/nonexistent/file.txt": true,
 		}
 		userPrompt := "test prompt"
-		
+
 		_, err = Build(tmpDir, selectedFiles, userPrompt)
 		if err == nil {
 			t.Error("Expected error for nonexistent selected file, got nil")
@@ -177,7 +206,7 @@ func TestBuildErrorConditions(t *testing.T) {
 
 	t.Run("unreadable selected file", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		// Create personas directory with default.md
 		personasDir := filepath.Join(tmpDir, "personas")
 		err := os.Mkdir(personasDir, 0755)
@@ -195,7 +224,7 @@ func TestBuildErrorConditions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create test file: %v", err)
 		}
-		
+
 		// Remove read permissions
 		err = os.Chmod(unreadableFile, 0000)
 		if err != nil {
@@ -207,7 +236,7 @@ func TestBuildErrorConditions(t *testing.T) {
 			unreadableFile: true,
 		}
 		userPrompt := "test prompt"
-		
+
 		_, err = Build(tmpDir, selectedFiles, userPrompt)
 		if err == nil {
 			t.Error("Expected error for unreadable selected file, got nil")
@@ -218,7 +247,7 @@ func TestBuildErrorConditions(t *testing.T) {
 func TestBuildEmptyInputs(t *testing.T) {
 	t.Run("no selected files", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		// Change to temp directory for personas/default.md lookup
 		originalWd, err := os.Getwd()
 		if err != nil {
@@ -229,7 +258,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 			t.Fatalf("Failed to change to temp directory: %v", err)
 		}
 		defer os.Chdir(originalWd)
-		
+
 		// Create personas directory with default.md
 		personasDir := filepath.Join(tmpDir, "personas")
 		err = os.Mkdir(personasDir, 0755)
@@ -250,7 +279,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 
 		selectedFiles := map[string]bool{} // No files selected
 		userPrompt := "This is a test prompt with no files."
-		
+
 		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
@@ -286,7 +315,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 
 	t.Run("empty user prompt", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		// Change to temp directory for personas/default.md lookup
 		originalWd, err := os.Getwd()
 		if err != nil {
@@ -297,7 +326,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 			t.Fatalf("Failed to change to temp directory: %v", err)
 		}
 		defer os.Chdir(originalWd)
-		
+
 		// Create personas directory with default.md
 		personasDir := filepath.Join(tmpDir, "personas")
 		err = os.Mkdir(personasDir, 0755)
@@ -321,7 +350,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 			testFile: true,
 		}
 		userPrompt := "" // Empty user prompt
-		
+
 		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
@@ -346,7 +375,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 
 	t.Run("empty directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		// Change to temp directory for personas/default.md lookup
 		originalWd, err := os.Getwd()
 		if err != nil {
@@ -357,7 +386,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 			t.Fatalf("Failed to change to temp directory: %v", err)
 		}
 		defer os.Chdir(originalWd)
-		
+
 		// Create only personas directory with default.md
 		personasDir := filepath.Join(tmpDir, "personas")
 		err = os.Mkdir(personasDir, 0755)
@@ -372,7 +401,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 
 		selectedFiles := map[string]bool{}
 		userPrompt := "Test with empty directory"
-		
+
 		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
@@ -397,7 +426,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 
 func TestFileTreeFormat(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Change to temp directory for personas/default.md lookup
 	originalWd, err := os.Getwd()
 	if err != nil {
@@ -408,7 +437,7 @@ func TestFileTreeFormat(t *testing.T) {
 		t.Fatalf("Failed to change to temp directory: %v", err)
 	}
 	defer os.Chdir(originalWd)
-	
+
 	// Create personas directory with default.md
 	personasDir := filepath.Join(tmpDir, "personas")
 	err = os.Mkdir(personasDir, 0755)
@@ -477,7 +506,7 @@ func TestFileTreeFormat(t *testing.T) {
 	if start == -1 || end == -1 {
 		t.Fatal("Could not find filetree CDATA section in XML")
 	}
-	
+
 	filetreeContent := xmlOutput[start+len("<filetree><![CDATA["):end]
 	lines := strings.Split(strings.TrimSpace(filetreeContent), "\n")
 
@@ -502,7 +531,7 @@ func TestFileTreeFormat(t *testing.T) {
 
 		// Count leading spaces
 		leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
-		
+
 		// Check if this line matches our expected structure
 		if expectedIndent, exists := expectedStructure[trimmed]; exists {
 			if leadingSpaces != expectedIndent {
@@ -550,4 +579,114 @@ func TestFileTreeFormat(t *testing.T) {
 			t.Errorf("Expected file tree to contain '%s'", entry)
 		}
 	}
+}
+
+func TestGetProjectOverview(t *testing.T) {
+	t.Run("CLAUDE.md exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		
+		claudeContent := "This is the CLAUDE.md file."
+		err := os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(claudeContent), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write CLAUDE.md: %v", err)
+		}
+		
+		// Also create GEMINI.md and README.md to test priority
+		err = os.WriteFile(filepath.Join(tmpDir, "GEMINI.md"), []byte("This is GEMINI.md"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write GEMINI.md: %v", err)
+		}
+		err = os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("This is README.md"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write README.md: %v", err)
+		}
+		
+		content, err := getProjectOverview(tmpDir)
+		if err != nil {
+			t.Fatalf("getProjectOverview returned error: %v", err)
+		}
+		
+		if content != claudeContent {
+			t.Errorf("Expected content '%s', got '%s'", claudeContent, content)
+		}
+	})
+	
+	t.Run("GEMINI.md exists (no CLAUDE.md)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		
+		geminiContent := "This is the GEMINI.md file."
+		err := os.WriteFile(filepath.Join(tmpDir, "GEMINI.md"), []byte(geminiContent), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write GEMINI.md: %v", err)
+		}
+		
+		// Also create README.md to test priority
+		err = os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("This is README.md"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write README.md: %v", err)
+		}
+		
+		content, err := getProjectOverview(tmpDir)
+		if err != nil {
+			t.Fatalf("getProjectOverview returned error: %v", err)
+		}
+		
+		if content != geminiContent {
+			t.Errorf("Expected content '%s', got '%s'", geminiContent, content)
+		}
+	})
+	
+	t.Run("README.md exists (no CLAUDE.md or GEMINI.md)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		
+		readmeContent := "This is the README.md file."
+		err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(readmeContent), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write README.md: %v", err)
+		}
+		
+		content, err := getProjectOverview(tmpDir)
+		if err != nil {
+			t.Fatalf("getProjectOverview returned error: %v", err)
+		}
+		
+		if content != readmeContent {
+			t.Errorf("Expected content '%s', got '%s'", readmeContent, content)
+		}
+	})
+	
+	t.Run("no overview files exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		
+		content, err := getProjectOverview(tmpDir)
+		if err != nil {
+			t.Fatalf("getProjectOverview returned error: %v", err)
+		}
+		
+		if content != "" {
+			t.Errorf("Expected empty content, got '%s'", content)
+		}
+	})
+	
+	t.Run("overview file exists but is unreadable", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		
+		claudeFile := filepath.Join(tmpDir, "CLAUDE.md")
+		err := os.WriteFile(claudeFile, []byte("content"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write CLAUDE.md: %v", err)
+		}
+		
+		// Remove read permissions
+		err = os.Chmod(claudeFile, 0000)
+		if err != nil {
+			t.Fatalf("Failed to change file permissions: %v", err)
+		}
+		defer os.Chmod(claudeFile, 0644) // Restore for cleanup
+		
+		_, err = getProjectOverview(tmpDir)
+		if err == nil {
+			t.Error("Expected error for unreadable overview file, got nil")
+		}
+	})
 }

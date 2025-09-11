@@ -20,12 +20,18 @@ type File struct {
 	Content string   `xml:",cdata"`
 }
 
+type SystemPrompt struct {
+	XMLName xml.Name `xml:"SystemPrompt"`
+	Type    string   `xml:"type,attr,omitempty"`
+	Content string   `xml:",cdata"`
+}
+
 type Prompt struct {
-	XMLName      xml.Name `xml:"prompt"`
-	FileTree     cdata    `xml:"filetree"`
-	Files        []File   `xml:"file"`
-	SystemPrompt cdata    `xml:"SystemPrompt"`
-	UserPrompt   cdata    `xml:"UserPrompt"`
+	XMLName      xml.Name       `xml:"prompt"`
+	FileTree     cdata          `xml:"filetree"`
+	Files        []File         `xml:"file"`
+	SystemPrompt []SystemPrompt `xml:"SystemPrompt"`
+	UserPrompt   cdata          `xml:"UserPrompt"`
 }
 
 func Build(rootPath string, selectedFiles map[string]bool, userPrompt string) (string, error) {
@@ -51,28 +57,55 @@ func Build(rootPath string, selectedFiles map[string]bool, userPrompt string) (s
 		}
 	}
 
-	// 3. Get system prompt
-	systemPrompt, err := os.ReadFile("personas/default.md")
-	if err != nil {
-		// If personas/default.md doesn't exist, use a fallback
-		systemPrompt = []byte("You are a helpful AI assistant.")
+	var systemPrompts []SystemPrompt
+
+	// 3. Get project overview
+	overviewContent, err := getProjectOverview(rootPath)
+	if err == nil && overviewContent != "" {
+		systemPrompts = append(systemPrompts, SystemPrompt{
+			Type:    "project-overview",
+			Content: overviewContent,
+		})
 	}
 
-	// 4. Construct the prompt struct
+	// 4. Get system prompt
+	systemPromptContent, err := os.ReadFile("personas/default.md")
+	if err != nil {
+		// If personas/default.md doesn't exist, use a fallback
+		systemPromptContent = []byte("You are a helpful AI assistant.")
+	}
+	systemPrompts = append(systemPrompts, SystemPrompt{Content: string(systemPromptContent)})
+
+	// 5. Construct the prompt struct
 	prompt := Prompt{
 		FileTree:     cdata{Text: fileTree},
 		Files:        files,
-		SystemPrompt: cdata{Text: string(systemPrompt)},
+		SystemPrompt: systemPrompts,
 		UserPrompt:   cdata{Text: userPrompt},
 	}
 
-	// 5. Marshal to XML
+	// 6. Marshal to XML
 	xmlOutput, err := xml.MarshalIndent(prompt, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("error marshalling to xml: %w", err)
 	}
 
 	return string(xmlOutput), nil
+}
+
+func getProjectOverview(rootPath string) (string, error) {
+	overviewFiles := []string{"CLAUDE.md", "GEMINI.md", "README.md"}
+	for _, filename := range overviewFiles {
+		path := filepath.Join(rootPath, filename)
+		if _, err := os.Stat(path); err == nil {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return "", fmt.Errorf("error reading overview file %s: %w", path, err)
+			}
+			return string(content), nil
+		}
+	}
+	return "", nil // No overview file found
 }
 
 func generateFileTree(rootPath string) (string, error) {
