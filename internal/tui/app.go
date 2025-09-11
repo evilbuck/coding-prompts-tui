@@ -64,14 +64,24 @@ func (a *App) Init() tea.Cmd {
 
 // Update handles messages and updates the application state
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+    var cmds []tea.Cmd
 
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
-		a.promptDialog.SetSize(msg.Width, msg.Height)
-		return a, nil
+    switch msg := msg.(type) {
+    case tea.WindowSizeMsg:
+        a.width = msg.Width
+        a.height = msg.Height
+        a.promptDialog.SetSize(msg.Width, msg.Height)
+        // Propagate calculated panel sizes to sub-models that need them
+        // These calculations must match exactly what mainLayout() gives to the border
+        topHeight := int(float64(a.height) * 0.66)
+        leftWidth := a.width / 2
+        // The border style sets Width(leftWidth-2) and Height(topHeight-2)
+        // So the content area inside the border is even smaller
+        // We need to account for the border padding (typically 1 char on each side)
+        contentWidth := leftWidth - 2 - 2  // border width minus border padding
+        contentHeight := topHeight - 2 - 2 // border height minus border padding
+        a.fileTree.SetSize(contentWidth, contentHeight)
+        return a, nil
 
 	case FileSelectionMsg:
 		// Update selected files panel when file selection changes
