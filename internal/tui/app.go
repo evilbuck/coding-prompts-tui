@@ -19,6 +19,7 @@ const (
 	FileTreePanel FocusedPanel = iota
 	SelectedFilesPanel
 	ChatPanel
+	FooterMenuPanel
 )
 
 // App represents the main application model
@@ -27,6 +28,7 @@ type App struct {
 	width           int
 	height          int
 	focused         FocusedPanel
+	menuBindingMode bool
 	fileTree        *FileTreeModel
 	selectedFiles   *SelectedFilesModel
 	chat            *ChatModel
@@ -203,10 +205,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			a.prevPanel()
 			return a, nil
+		case "escape":
+			// If in menu binding mode, exit to chat panel
+			if a.menuBindingMode {
+				a.focused = ChatPanel
+				a.menuBindingMode = false
+				return a, nil
+			}
 		case a.settingsManager.GetMenuActivationKey():
-			// Activate menu - show notification
-			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
-			return a, alertCmd
+			// Only activate menu when in menu binding mode
+			if a.menuBindingMode {
+				// Activate menu - show notification
+				alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
+				return a, alertCmd
+			}
 		case "ctrl+s":
 			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
 			if err != nil {
@@ -248,6 +260,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Handle invalid focus state - reset to FileTreePanel
 		a.focused = FileTreePanel
+		a.menuBindingMode = false
 		model, cmd := a.fileTree.Update(msg)
 		a.fileTree = model.(*FileTreeModel)
 		cmds = append(cmds, cmd)
@@ -327,10 +340,16 @@ func (a *App) mainLayout() string {
 	// Create footer with menu button
 	footerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
 		Width(a.width-2).
 		Height(1).
 		Padding(0, 2)
+	
+	// Apply focused style to footer if it has focus
+	if a.focused == FooterMenuPanel {
+		footerStyle = footerStyle.BorderForeground(lipgloss.Color("69"))
+	} else {
+		footerStyle = footerStyle.BorderForeground(lipgloss.Color("240"))
+	}
 
 	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ")"
 	footer := footerStyle.Render(footerContent)
@@ -349,26 +368,34 @@ func (a *App) nextPanel() {
 	case SelectedFilesPanel:
 		a.focused = ChatPanel
 	case ChatPanel:
+		a.focused = FooterMenuPanel
+	case FooterMenuPanel:
 		a.focused = FileTreePanel
 	default:
 		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
 	}
+	// Update menu binding mode based on footer focus
+	a.menuBindingMode = (a.focused == FooterMenuPanel)
 }
 
 // prevPanel moves focus to the previous panel
 func (a *App) prevPanel() {
 	switch a.focused {
 	case FileTreePanel:
-		a.focused = ChatPanel
+		a.focused = FooterMenuPanel
 	case SelectedFilesPanel:
 		a.focused = FileTreePanel
 	case ChatPanel:
 		a.focused = SelectedFilesPanel
+	case FooterMenuPanel:
+		a.focused = ChatPanel
 	default:
 		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
 	}
+	// Update menu binding mode based on footer focus
+	a.menuBindingMode = (a.focused == FooterMenuPanel)
 }
 
 // handleMouseClick determines which panel was clicked and sets focus accordingly
@@ -392,8 +419,12 @@ func (a *App) handleMouseClick(x, y int) {
 	} else if y < topHeight+bottomHeight {
 		// Click is in the chat area
 		a.focused = ChatPanel
+	} else if y < topHeight+bottomHeight+footerHeight {
+		// Click is in the footer area
+		a.focused = FooterMenuPanel
 	}
-	// Ignore clicks in footer area
+	// Update menu binding mode based on footer focus
+	a.menuBindingMode = (a.focused == FooterMenuPanel)
 }
 
 // updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
