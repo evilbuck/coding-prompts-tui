@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/timer"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"go.dalton.dog/bubbleup"
 )
 
 // FocusedPanel represents which panel currently has focus
@@ -41,6 +42,7 @@ type App struct {
 	notificationText    string
 	notificationVisible bool
 	notificationTimer   timer.Model
+	alertModel          bubbleup.AlertModel
 	configManager       *config.ConfigManager
 	workspace           *config.WorkspaceState
 }
@@ -58,6 +60,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, workspace *confi
 		selectedFiles: selectedFiles,
 		chat:          chat,
 		promptDialog:  NewPromptDialogModel(),
+		alertModel:    *bubbleup.NewAlertModel(5, true),
 		configManager: cfgManager,
 		workspace:     workspace,
 	}
@@ -71,6 +74,7 @@ func (a *App) Init() tea.Cmd {
 		a.fileTree.Init(),
 		a.selectedFiles.Init(),
 		a.chat.Init(),
+		a.alertModel.Init(),
 	)
 }
 
@@ -85,7 +89,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.promptDialog.SetSize(msg.Width, msg.Height)
 		// Propagate calculated panel sizes to sub-models that need them
 		// These calculations must match exactly what mainLayout() gives to the border
-		topHeight := int(float64(a.height) * 0.66)
+		footerHeight := 3 // Single line footer with padding
+		availableHeight := a.height - footerHeight
+		topHeight := int(float64(availableHeight) * 0.66)
 		leftWidth := a.width / 2
 		// The border style sets Width(leftWidth-2) and Height(topHeight-2)
 		// So the content area inside the border is even smaller
@@ -212,6 +218,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			a.prevPanel()
 			return a, nil
+		case "x":
+			// Activate menu - show notification
+			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
+			return a, alertCmd
 		case "ctrl+s":
 			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
 			if err != nil {
@@ -224,6 +234,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 	}
+
+	// Update the alert model
+	outAlert, outCmd := a.alertModel.Update(msg)
+	a.alertModel = outAlert.(bubbleup.AlertModel)
+	cmds = append(cmds, outCmd)
 
 	// Update the focused panel
 	switch a.focused {
@@ -268,25 +283,20 @@ func (a *App) View() string {
 	// Show prompt dialog if visible
 	if a.promptDialog.IsVisible() {
 		dialogView := a.promptDialog.View()
-		// Overlay notification on dialog if visible
-		if a.notificationVisible {
-			return a.overlayNotification(dialogView)
-		}
-		return dialogView
+		// Render with alert notifications
+		return a.alertModel.Render(dialogView)
 	}
 
-	// Overlay notification on main layout if visible
-	if a.notificationVisible {
-		return a.overlayNotification(mainLayout)
-	}
-
-	return mainLayout
+	// Render main layout with alert notifications
+	return a.alertModel.Render(mainLayout)
 }
 
 func (a *App) mainLayout() string {
-	// Calculate panel dimensions
-	topHeight := int(float64(a.height) * 0.66)
-	bottomHeight := a.height - topHeight
+	// Calculate panel dimensions with footer
+	footerHeight := 3 // Single line footer with padding
+	availableHeight := a.height - footerHeight
+	topHeight := int(float64(availableHeight) * 0.66)
+	bottomHeight := availableHeight - topHeight
 	leftWidth := a.width / 2
 	rightWidth := a.width - leftWidth
 
@@ -329,10 +339,21 @@ func (a *App) mainLayout() string {
 		Height(bottomHeight - 2).
 		Render(a.chat.View())
 
+	// Create footer with menu button
+	footerStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Width(a.width - 2).
+		Height(1).
+		Padding(0, 2)
+	
+	footerContent := "menu (x)"
+	footer := footerStyle.Render(footerContent)
+
 	// Layout the panels
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
 
-	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel)
+	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel, footer)
 }
 
 // overlayNotification renders the notification overlay on top of the given content
@@ -386,7 +407,10 @@ func (a *App) prevPanel() {
 // handleMouseClick determines which panel was clicked and sets focus accordingly
 func (a *App) handleMouseClick(x, y int) {
 	// Calculate panel dimensions - these must match mainLayout()
-	topHeight := int(float64(a.height) * 0.66)
+	footerHeight := 3 // Single line footer with padding
+	availableHeight := a.height - footerHeight
+	topHeight := int(float64(availableHeight) * 0.66)
+	bottomHeight := availableHeight - topHeight
 	leftWidth := a.width / 2
 
 	// Check if click is in the top area (file tree or selected files panels)
@@ -398,10 +422,11 @@ func (a *App) handleMouseClick(x, y int) {
 			// Click is in the right half (selected files panel)
 			a.focused = SelectedFilesPanel
 		}
-	} else {
-		// Click is in the bottom area (chat panel)
+	} else if y < topHeight + bottomHeight {
+		// Click is in the chat area
 		a.focused = ChatPanel
 	}
+	// Ignore clicks in footer area
 }
 
 // updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
