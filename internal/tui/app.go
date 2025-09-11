@@ -17,6 +17,7 @@ type FocusedPanel int
 
 const (
 	FileTreePanel FocusedPanel = iota
+	SelectedFilesPanel
 	ChatPanel
 )
 
@@ -93,6 +94,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		contentHeight := topHeight - 2 - 2 // border height minus border padding
 		a.fileTree.SetSize(contentWidth, contentHeight)
 		return a, nil
+
+	case tea.MouseMsg:
+		// Handle mouse clicks for panel focus
+		if msg.Type == tea.MouseLeft {
+			a.handleMouseClick(msg.X, msg.Y)
+		}
+		// Let the currently focused panel handle the mouse event
+		switch a.focused {
+		case FileTreePanel:
+			model, cmd := a.fileTree.Update(msg)
+			a.fileTree = model.(*FileTreeModel)
+			cmds = append(cmds, cmd)
+		case SelectedFilesPanel:
+			model, cmd := a.selectedFiles.Update(msg)
+			a.selectedFiles = model.(*SelectedFilesModel)
+			cmds = append(cmds, cmd)
+		case ChatPanel:
+			chatModel, chatCmd := a.chat.Update(msg)
+			a.chat = chatModel.(*ChatModel)
+			cmds = append(cmds, chatCmd)
+		}
+		return a, tea.Batch(cmds...)
 
 	case FileSelectionMsg:
 		// Update selected files panel when file selection changes
@@ -208,6 +231,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, cmd := a.fileTree.Update(msg)
 		a.fileTree = model.(*FileTreeModel)
 		cmds = append(cmds, cmd)
+	case SelectedFilesPanel:
+		model, cmd := a.selectedFiles.Update(msg)
+		a.selectedFiles = model.(*SelectedFilesModel)
+		cmds = append(cmds, cmd)
 	case ChatPanel:
 		chatModel, chatCmd := a.chat.Update(msg)
 		a.chat = chatModel.(*ChatModel)
@@ -282,8 +309,12 @@ func (a *App) mainLayout() string {
 		Height(topHeight - 2).
 		Render(a.fileTree.View())
 
-	// Selected files panel (top-right) - always uses normal border since it's not focusable
-	selectedPanel := normalBorder.
+	// Selected files panel (top-right)
+	selectedStyle := normalBorder
+	if a.focused == SelectedFilesPanel {
+		selectedStyle = focusedBorder
+	}
+	selectedPanel := selectedStyle.
 		Width(rightWidth - 2).
 		Height(topHeight - 2).
 		Render(a.selectedFiles.View())
@@ -326,6 +357,8 @@ func (a *App) overlayNotification(content string) string {
 func (a *App) nextPanel() {
 	switch a.focused {
 	case FileTreePanel:
+		a.focused = SelectedFilesPanel
+	case SelectedFilesPanel:
 		a.focused = ChatPanel
 	case ChatPanel:
 		a.focused = FileTreePanel
@@ -340,11 +373,34 @@ func (a *App) prevPanel() {
 	switch a.focused {
 	case FileTreePanel:
 		a.focused = ChatPanel
-	case ChatPanel:
+	case SelectedFilesPanel:
 		a.focused = FileTreePanel
+	case ChatPanel:
+		a.focused = SelectedFilesPanel
 	default:
 		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
+	}
+}
+
+// handleMouseClick determines which panel was clicked and sets focus accordingly
+func (a *App) handleMouseClick(x, y int) {
+	// Calculate panel dimensions - these must match mainLayout()
+	topHeight := int(float64(a.height) * 0.66)
+	leftWidth := a.width / 2
+
+	// Check if click is in the top area (file tree or selected files panels)
+	if y < topHeight {
+		// Check if click is in the left half (file tree panel)
+		if x < leftWidth {
+			a.focused = FileTreePanel
+		} else {
+			// Click is in the right half (selected files panel)
+			a.focused = SelectedFilesPanel
+		}
+	} else {
+		// Click is in the bottom area (chat panel)
+		a.focused = ChatPanel
 	}
 }
 
