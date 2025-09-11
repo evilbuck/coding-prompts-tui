@@ -66,6 +66,15 @@ func (m *ConfigManager) load() error {
 	if m.config.RecentWorkspaces == nil {
 		m.config.RecentWorkspaces = make(map[string]*WorkspaceState)
 	}
+	
+	// Initialize UI settings if not present (backward compatibility)
+	if len(m.config.UISettings.SelectedFilesPanel.RemovalKeys) == 0 {
+		m.config.UISettings.SelectedFilesPanel.RemovalKeys = []string{" ", "delete", "backspace", "x"}
+	}
+	if m.config.UISettings.SelectedFilesPanel.HelpText == "" {
+		m.config.UISettings.SelectedFilesPanel.HelpText = "↑/↓: navigate, %s: remove file"
+		m.config.UISettings.SelectedFilesPanel.ShowHelpText = true
+	}
 
 	return nil
 }
@@ -105,8 +114,9 @@ func (m *ConfigManager) GetWorkspace(path string) *WorkspaceState {
 	ws, ok := m.config.RecentWorkspaces[path]
 	if !ok {
 		ws = &WorkspaceState{
-			Path:          path,
-			SelectedFiles: []string{},
+			Path:           path,
+			SelectedFiles:  []string{},
+			CurrentPersona: "default",
 		}
 		m.config.RecentWorkspaces[path] = ws
 	}
@@ -116,10 +126,33 @@ func (m *ConfigManager) GetWorkspace(path string) *WorkspaceState {
 	return ws
 }
 
+// GetSelectedFilesPanelSettings returns the selected files panel settings
+func (m *ConfigManager) GetSelectedFilesPanelSettings() SelectedFilesPanelSettings {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.config.UISettings.SelectedFilesPanel
+}
+
+// UpdateSelectedFilesPanelSettings updates the selected files panel settings
+func (m *ConfigManager) UpdateSelectedFilesPanelSettings(settings SelectedFilesPanelSettings) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.config.UISettings.SelectedFilesPanel = settings
+	return m.save()
+}
+
 // newDefaultConfig creates a new AppConfig with default values.
 func newDefaultConfig() *AppConfig {
 	return &AppConfig{
 		RecentWorkspaces: make(map[string]*WorkspaceState),
+		UISettings: UISettings{
+			SelectedFilesPanel: SelectedFilesPanelSettings{
+				RemovalKeys:    []string{" ", "delete", "backspace", "x"}, // space, delete, backspace, x
+				ShowHelpText:   true,
+				HelpText:       "↑/↓: navigate, %s: remove file", // %s will be replaced with key list
+				ConfirmRemoval: false,
+			},
+		},
 		Metadata: ConfigMetadata{
 			Version:      "1",
 			AppVersion:   AppVersion,

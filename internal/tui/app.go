@@ -42,7 +42,7 @@ type App struct {
 // NewApp creates a new application instance
 func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager *config.SettingsManager, workspace *config.WorkspaceState) *App {
 	fileTree := NewFileTreeModel(targetDir, workspace.SelectedFiles)
-	selectedFiles := NewSelectedFilesModel()
+	selectedFiles := NewSelectedFilesModel(cfgManager)
 	chat := NewChatModel(workspace.ChatInput)
 
 	app := &App{
@@ -94,8 +94,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Propagate calculated panel sizes to sub-models that need them
 		// These calculations must match exactly what mainLayout() gives to the border
+		headerHeight := 3 // Single line header with padding
 		footerHeight := 3 // Single line footer with padding
-		availableHeight := a.height - footerHeight
+		availableHeight := a.height - headerHeight - footerHeight
 		topHeight := int(float64(availableHeight) * 0.66)
 		leftWidth := a.width / 2
 		// The border style sets Width(leftWidth-2) and Height(topHeight-2)
@@ -290,9 +291,10 @@ func (a *App) View() string {
 }
 
 func (a *App) mainLayout() string {
-	// Calculate panel dimensions with footer
+	// Calculate panel dimensions with header and footer
+	headerHeight := 3 // Single line header with padding
 	footerHeight := 3 // Single line footer with padding
-	availableHeight := a.height - footerHeight
+	availableHeight := a.height - headerHeight - footerHeight
 	topHeight := int(float64(availableHeight) * 0.66)
 	bottomHeight := availableHeight - topHeight
 	leftWidth := a.width / 2
@@ -337,6 +339,22 @@ func (a *App) mainLayout() string {
 		Height(bottomHeight - 2).
 		Render(a.chat.View())
 
+	// Create header with persona information
+	headerStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Width(a.width-2).
+		Height(1).
+		Padding(0, 2).
+		BorderForeground(lipgloss.Color("240"))
+
+	// Get current persona name, default to "default" if not set
+	currentPersona := a.workspace.CurrentPersona
+	if currentPersona == "" {
+		currentPersona = "default"
+	}
+	headerContent := "Persona: " + currentPersona
+	header := headerStyle.Render(headerContent)
+
 	// Create footer with menu button
 	footerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -357,7 +375,7 @@ func (a *App) mainLayout() string {
 	// Layout the panels
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
 
-	return lipgloss.JoinVertical(lipgloss.Left, topRow, chatPanel, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, topRow, chatPanel, footer)
 }
 
 // nextPanel moves focus to the next panel
@@ -401,14 +419,20 @@ func (a *App) prevPanel() {
 // handleMouseClick determines which panel was clicked and sets focus accordingly
 func (a *App) handleMouseClick(x, y int) {
 	// Calculate panel dimensions - these must match mainLayout()
+	headerHeight := 3 // Single line header with padding
 	footerHeight := 3 // Single line footer with padding
-	availableHeight := a.height - footerHeight
+	availableHeight := a.height - headerHeight - footerHeight
 	topHeight := int(float64(availableHeight) * 0.66)
 	bottomHeight := availableHeight - topHeight
 	leftWidth := a.width / 2
 
-	// Check if click is in the top area (file tree or selected files panels)
-	if y < topHeight {
+	// Check if click is in the header area
+	if y < headerHeight {
+		// Header clicked - could add header focus support in the future
+		return
+	}
+	// Check if click is in the top panel area (file tree or selected files panels)
+	if y < headerHeight+topHeight {
 		// Check if click is in the left half (file tree panel)
 		if x < leftWidth {
 			a.focused = FileTreePanel
@@ -416,10 +440,10 @@ func (a *App) handleMouseClick(x, y int) {
 			// Click is in the right half (selected files panel)
 			a.focused = SelectedFilesPanel
 		}
-	} else if y < topHeight+bottomHeight {
+	} else if y < headerHeight+topHeight+bottomHeight {
 		// Click is in the chat area
 		a.focused = ChatPanel
-	} else if y < topHeight+bottomHeight+footerHeight {
+	} else if y < headerHeight+topHeight+bottomHeight+footerHeight {
 		// Click is in the footer area
 		a.focused = FooterMenuPanel
 	}

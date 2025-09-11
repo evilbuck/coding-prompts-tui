@@ -162,3 +162,4 @@ Expected Go dependencies:
 The project documentation for usage and architecture, other than the README.md is in the root docs folder as markdown.
 Always prompt to create documentation after each set of tasks.
 - whenever we need a new component, search the bubbletea components for something existing.
+- key bindings should always come from @internal/config/config.go and defaults be created in @configs/coding_prompts.toml
