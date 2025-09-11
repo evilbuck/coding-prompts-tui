@@ -690,3 +690,169 @@ func TestGetProjectOverview(t *testing.T) {
 		}
 	})
 }
+
+func TestFileTreeRespectsGitignore(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create personas directory with default.md
+	personasDir := filepath.Join(tmpDir, "personas")
+	err := os.Mkdir(personasDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create personas dir: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(personasDir, "default.md"), []byte("You are a test assistant."), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write dummy system prompt: %v", err)
+	}
+
+	// Create a .gitignore file with common patterns
+	gitignoreContent := `# Test gitignore patterns
+*.log
+*.tmp
+*.test
+build/
+dist/
+node_modules/
+.DS_Store
+debug_*.go
+test_*.go
+`
+	err = os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitignoreContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create .gitignore: %v", err)
+	}
+
+	// Create files that should be IGNORED according to .gitignore
+	ignoredFiles := []struct {
+		path    string
+		content string
+	}{
+		{"error.log", "error log content"},
+		{"temp.tmp", "temporary content"},
+		{"app.test", "test binary"},
+		{".DS_Store", "mac metadata"},
+		{"debug_main.go", "debug file"},
+		{"test_helper.go", "test helper"},
+	}
+
+	for _, file := range ignoredFiles {
+		err = os.WriteFile(filepath.Join(tmpDir, file.path), []byte(file.content), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create ignored file %s: %v", file.path, err)
+		}
+	}
+
+	// Create directories that should be IGNORED
+	ignoredDirs := []string{"build", "dist", "node_modules"}
+	for _, dir := range ignoredDirs {
+		dirPath := filepath.Join(tmpDir, dir)
+		err = os.Mkdir(dirPath, 0755)
+		if err != nil {
+			t.Fatalf("Failed to create ignored directory %s: %v", dir, err)
+		}
+		
+		// Add files inside ignored directories
+		err = os.WriteFile(filepath.Join(dirPath, "content.txt"), []byte("should be ignored"), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create file in ignored directory %s: %v", dir, err)
+		}
+	}
+
+	// Create files that should NOT be ignored
+	allowedFiles := []struct {
+		path    string
+		content string
+	}{
+		{"main.go", "package main"},
+		{"README.md", "project readme"},
+		{"config.json", "configuration"},
+		{"src/app.go", "source code"},
+	}
+
+	// Create src directory for nested file
+	err = os.Mkdir(filepath.Join(tmpDir, "src"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create src directory: %v", err)
+	}
+
+	for _, file := range allowedFiles {
+		err = os.WriteFile(filepath.Join(tmpDir, file.path), []byte(file.content), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create allowed file %s: %v", file.path, err)
+		}
+	}
+
+	// Change to temp directory for running Build
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	err = os.Chdir(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	// Build the prompt with no selected files (we just want to test the file tree)
+	selectedFiles := map[string]bool{}
+	userPrompt := "Test gitignore filtering"
+
+	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+	if err != nil {
+		t.Fatalf("Build() returned an unexpected error: %v", err)
+	}
+
+	// Extract the filetree content for analysis
+	start := strings.Index(xmlOutput, "<filetree><![CDATA[")
+	end := strings.Index(xmlOutput, "]]></filetree>")
+	if start == -1 || end == -1 {
+		t.Fatal("Could not find filetree CDATA section in XML")
+	}
+
+	filetreeContent := xmlOutput[start+len("<filetree><![CDATA["):end]
+
+	// Verify that IGNORED files are NOT in the file tree
+	ignoredItems := []string{
+		"error.log",
+		"temp.tmp", 
+		"app.test",
+		".DS_Store",
+		"debug_main.go",
+		"test_helper.go",
+		"build/",
+		"dist/",
+		"node_modules/",
+		"content.txt", // files inside ignored directories
+	}
+
+	for _, item := range ignoredItems {
+		if strings.Contains(filetreeContent, item) {
+			t.Errorf("File tree should NOT contain ignored item '%s', but it was found in:\n%s", item, filetreeContent)
+		}
+	}
+
+	// Verify that ALLOWED files ARE in the file tree
+	allowedItems := []string{
+		"main.go",
+		"README.md", 
+		"config.json",
+		"src/",
+		"app.go",
+		"personas/",
+		"default.md",
+		".gitignore", // The .gitignore file itself should be in the tree
+	}
+
+	for _, item := range allowedItems {
+		if !strings.Contains(filetreeContent, item) {
+			t.Errorf("File tree should contain allowed item '%s', but it was not found in:\n%s", item, filetreeContent)
+		}
+	}
+
+	// Validate that the XML is well-formed
+	var prompt Prompt
+	err = xml.Unmarshal([]byte(xmlOutput), &prompt)
+	if err != nil {
+		t.Errorf("Generated XML is not well-formed: %v\nXML:\n%s", err, xmlOutput)
+	}
+}
