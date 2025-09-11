@@ -67,7 +67,7 @@ func TestBuild(t *testing.T) {
 
 	// 4. Call the Build function
 	// We pass tmpDir as the root path
-	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 
 	// 5. Assert the output
 	if err != nil {
@@ -112,7 +112,7 @@ func TestBuild(t *testing.T) {
 	}
 
 	// Check for default system prompt
-	expectedSystemPrompt := `<SystemPrompt><![CDATA[You are a test assistant.]]></SystemPrompt>`
+	expectedSystemPrompt := `<SystemPrompt type="default"><![CDATA[You are a test assistant.]]></SystemPrompt>`
 	if !strings.Contains(xmlOutput, expectedSystemPrompt) {
 		t.Errorf("Expected XML to contain the system prompt.\nGot:\n%s\nExpected to contain:\n%s", xmlOutput, expectedSystemPrompt)
 	}
@@ -156,8 +156,8 @@ func TestBuild(t *testing.T) {
 	if overviewPrompt.Content != "This is the project overview." {
 		t.Errorf("Expected overview prompt content 'This is the project overview.', got '%s'", overviewPrompt.Content)
 	}
-	if defaultPrompt.Type != "" {
-		t.Errorf("Expected second system prompt to have no type, got '%s'", defaultPrompt.Type)
+	if defaultPrompt.Type != "default" {
+		t.Errorf("Expected second system prompt to have type 'default', got '%s'", defaultPrompt.Type)
 	}
 	if defaultPrompt.Content != "You are a test assistant." {
 		t.Errorf("Expected system prompt 'You are a test assistant.', got '%s'", defaultPrompt.Content)
@@ -173,7 +173,7 @@ func TestBuildErrorConditions(t *testing.T) {
 		selectedFiles := map[string]bool{}
 		userPrompt := "test prompt"
 
-		_, err := Build("/nonexistent/path", selectedFiles, userPrompt)
+		_, err := Build("/nonexistent/path", selectedFiles, userPrompt, []string{"default"})
 		if err == nil {
 			t.Error("Expected error for invalid root path, got nil")
 		}
@@ -198,7 +198,7 @@ func TestBuildErrorConditions(t *testing.T) {
 		}
 		userPrompt := "test prompt"
 
-		_, err = Build(tmpDir, selectedFiles, userPrompt)
+		_, err = Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 		if err == nil {
 			t.Error("Expected error for nonexistent selected file, got nil")
 		}
@@ -237,7 +237,7 @@ func TestBuildErrorConditions(t *testing.T) {
 		}
 		userPrompt := "test prompt"
 
-		_, err = Build(tmpDir, selectedFiles, userPrompt)
+		_, err = Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 		if err == nil {
 			t.Error("Expected error for unreadable selected file, got nil")
 		}
@@ -280,7 +280,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 		selectedFiles := map[string]bool{} // No files selected
 		userPrompt := "This is a test prompt with no files."
 
-		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
 		}
@@ -351,7 +351,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 		}
 		userPrompt := "" // Empty user prompt
 
-		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
 		}
@@ -402,7 +402,7 @@ func TestBuildEmptyInputs(t *testing.T) {
 		selectedFiles := map[string]bool{}
 		userPrompt := "Test with empty directory"
 
-		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+		xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 		if err != nil {
 			t.Fatalf("Build() returned an unexpected error: %v", err)
 		}
@@ -495,7 +495,7 @@ func TestFileTreeFormat(t *testing.T) {
 	}
 	userPrompt := "Test file tree format"
 
-	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 	if err != nil {
 		t.Fatalf("Build() returned an unexpected error: %v", err)
 	}
@@ -797,7 +797,7 @@ test_*.go
 	selectedFiles := map[string]bool{}
 	userPrompt := "Test gitignore filtering"
 
-	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt)
+	xmlOutput, err := Build(tmpDir, selectedFiles, userPrompt, []string{"default"})
 	if err != nil {
 		t.Fatalf("Build() returned an unexpected error: %v", err)
 	}

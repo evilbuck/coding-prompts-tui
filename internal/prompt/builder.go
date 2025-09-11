@@ -34,7 +34,7 @@ type Prompt struct {
 	UserPrompt   cdata          `xml:"UserPrompt"`
 }
 
-func Build(rootPath string, selectedFiles map[string]bool, userPrompt string) (string, error) {
+func Build(rootPath string, selectedFiles map[string]bool, userPrompt string, activePersonas []string) (string, error) {
 	// 1. Generate file tree
 	fileTree, err := generateFileTree(rootPath)
 	if err != nil {
@@ -68,13 +68,23 @@ func Build(rootPath string, selectedFiles map[string]bool, userPrompt string) (s
 		})
 	}
 
-	// 4. Get system prompt
-	systemPromptContent, err := os.ReadFile("personas/default.md")
-	if err != nil {
-		// If personas/default.md doesn't exist, use a fallback
-		systemPromptContent = []byte("You are a helpful AI assistant.")
+	// 4. Get system prompts for active personas
+	if len(activePersonas) == 0 {
+		activePersonas = []string{"default"}
 	}
-	systemPrompts = append(systemPrompts, SystemPrompt{Content: string(systemPromptContent)})
+	
+	for _, persona := range activePersonas {
+		personaPath := filepath.Join(rootPath, "personas", persona+".md")
+		systemPromptContent, err := os.ReadFile(personaPath)
+		if err != nil {
+			// If persona file doesn't exist, use a fallback
+			systemPromptContent = []byte(fmt.Sprintf("You are a helpful AI assistant with the %s persona.", persona))
+		}
+		systemPrompts = append(systemPrompts, SystemPrompt{
+			Type:    persona,
+			Content: string(systemPromptContent),
+		})
+	}
 
 	// 5. Construct the prompt struct
 	prompt := Prompt{

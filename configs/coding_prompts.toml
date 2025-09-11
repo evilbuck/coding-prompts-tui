@@ -5,3 +5,5 @@
 [bindings]
 # Key binding for menu activation
 menu_activation = "x"
+# Key binding for persona selection dialog
+persona_menu = "p"

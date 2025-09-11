@@ -32,7 +32,8 @@ func TestSettingsManager_Load_ValidTOML(t *testing.T) {
 	
 	// Create a valid TOML file
 	validTOML := `[bindings]
-menu_activation = "m"`
+menu_activation = "m"
+persona_menu = "p"`
 	
 	err := os.WriteFile(configPath, []byte(validTOML), 0644)
 	if err != nil {
@@ -139,7 +140,8 @@ func TestSettingsManager_GetMenuActivationKey(t *testing.T) {
 	configPath := filepath.Join(tempDir, "coding_prompts.toml")
 	
 	validTOML := `[bindings]
-menu_activation = "z"`
+menu_activation = "z"
+persona_menu = "p"`
 	
 	err := os.WriteFile(configPath, []byte(validTOML), 0644)
 	if err != nil {
@@ -187,7 +189,8 @@ func TestSettingsManager_Reload(t *testing.T) {
 	
 	// Create initial config
 	initialTOML := `[bindings]
-menu_activation = "x"`
+menu_activation = "x"
+persona_menu = "p"`
 	
 	err := os.WriteFile(configPath, []byte(initialTOML), 0644)
 	if err != nil {
@@ -210,7 +213,8 @@ menu_activation = "x"`
 	
 	// Update the config file
 	updatedTOML := `[bindings]
-menu_activation = "y"`
+menu_activation = "y"
+persona_menu = "p"`
 	
 	err = os.WriteFile(configPath, []byte(updatedTOML), 0644)
 	if err != nil {
@@ -234,7 +238,8 @@ func TestSettingsManager_OnChangeCallback(t *testing.T) {
 	
 	// Create initial config
 	initialTOML := `[bindings]
-menu_activation = "a"`
+menu_activation = "a"
+persona_menu = "p"`
 	
 	err := os.WriteFile(configPath, []byte(initialTOML), 0644)
 	if err != nil {
@@ -261,7 +266,8 @@ menu_activation = "a"`
 	
 	// Update the config file
 	updatedTOML := `[bindings]
-menu_activation = "b"`
+menu_activation = "b"
+persona_menu = "q"`
 	
 	err = os.WriteFile(configPath, []byte(updatedTOML), 0644)
 	if err != nil {

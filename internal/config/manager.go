@@ -116,9 +116,17 @@ func (m *ConfigManager) GetWorkspace(path string) *WorkspaceState {
 		ws = &WorkspaceState{
 			Path:           path,
 			SelectedFiles:  []string{},
-			CurrentPersona: "default",
+			ActivePersonas: []string{"default"},
 		}
 		m.config.RecentWorkspaces[path] = ws
+	} else {
+		// Handle backward compatibility migration
+		if len(ws.ActivePersonas) == 0 && ws.CurrentPersona != "" {
+			ws.ActivePersonas = []string{ws.CurrentPersona}
+			ws.CurrentPersona = "" // Clear deprecated field
+		} else if len(ws.ActivePersonas) == 0 {
+			ws.ActivePersonas = []string{"default"}
+		}
 	}
 	ws.LastAccessed = time.Now()
 	// Save the workspace immediately to persist the new workspace or updated LastAccessed

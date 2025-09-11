@@ -23,6 +23,7 @@ type UserSettings struct {
 // KeyBindings contains all key binding configurations
 type KeyBindings struct {
 	MenuActivation string `toml:"menu_activation"`
+	PersonaMenu    string `toml:"persona_menu"`
 }
 
 // SettingsManager handles loading and validation of user settings from TOML
@@ -102,6 +103,16 @@ func (m *SettingsManager) validate(settings *UserSettings) error {
 		return fmt.Errorf("bindings.menu_activation must be a single character, got: %q", settings.Bindings.MenuActivation)
 	}
 	
+	// Validate persona menu key binding
+	if settings.Bindings.PersonaMenu == "" {
+		return fmt.Errorf("bindings.persona_menu cannot be empty")
+	}
+	
+	// Check if it's a valid single character
+	if len(settings.Bindings.PersonaMenu) != 1 {
+		return fmt.Errorf("bindings.persona_menu must be a single character, got: %q", settings.Bindings.PersonaMenu)
+	}
+	
 	return nil
 }
 
@@ -119,6 +130,13 @@ func (m *SettingsManager) GetMenuActivationKey() string {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	return m.settings.Bindings.MenuActivation
+}
+
+// GetPersonaMenuKey returns the persona menu key binding (thread-safe)
+func (m *SettingsManager) GetPersonaMenuKey() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.PersonaMenu
 }
 
 // Reload reloads the configuration from disk
@@ -225,7 +243,8 @@ func (m *SettingsManager) reloadAndNotify() error {
 	}
 	
 	// Call onChange callback if settings actually changed
-	if onChange != nil && (oldSettings.Bindings.MenuActivation != newSettings.Bindings.MenuActivation) {
+	if onChange != nil && (oldSettings.Bindings.MenuActivation != newSettings.Bindings.MenuActivation ||
+		oldSettings.Bindings.PersonaMenu != newSettings.Bindings.PersonaMenu) {
 		onChange(newSettings)
 	}
 	
@@ -237,6 +256,7 @@ func getDefaultSettings() *UserSettings {
 	return &UserSettings{
 		Bindings: KeyBindings{
 			MenuActivation: "x",
+			PersonaMenu:    "p",
 		},
 	}
 }

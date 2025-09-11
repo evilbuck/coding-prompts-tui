@@ -2,8 +2,10 @@ package tui
 
 import (
 	"path/filepath"
+	"strings"
 
 	"coding-prompts-tui/internal/config"
+	"coding-prompts-tui/internal/persona"
 	"coding-prompts-tui/internal/prompt"
 
 	"github.com/atotto/clipboard"
@@ -33,9 +35,11 @@ type App struct {
 	selectedFiles   *SelectedFilesModel
 	chat            *ChatModel
 	promptDialog    *PromptDialogModel
+	personaDialog   *PersonaDialogModel
 	alertModel      bubbleup.AlertModel
 	configManager   *config.ConfigManager
 	settingsManager *config.SettingsManager
+	personaManager  *persona.Manager
 	workspace       *config.WorkspaceState
 }
 
@@ -44,6 +48,15 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	fileTree := NewFileTreeModel(targetDir, workspace.SelectedFiles)
 	selectedFiles := NewSelectedFilesModel(cfgManager)
 	chat := NewChatModel(workspace.ChatInput)
+	
+	// Initialize persona manager and discover personas
+	personaManager := persona.NewManager(targetDir)
+	personaManager.DiscoverPersonas()
+	
+	// Initialize persona dialog
+	personaDialog := NewPersonaDialogModel()
+	personaDialog.SetAvailablePersonas(personaManager.GetAvailablePersonas())
+	personaDialog.SetActivePersonas(workspace.ActivePersonas)
 
 	app := &App{
 		targetDir:       targetDir,
@@ -52,9 +65,11 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		selectedFiles:   selectedFiles,
 		chat:            chat,
 		promptDialog:    NewPromptDialogModel(),
+		personaDialog:   personaDialog,
 		alertModel:      *bubbleup.NewAlertModel(40, true), // Will be updated dynamically on window resize
 		configManager:   cfgManager,
 		settingsManager: settingsManager,
+		personaManager:  personaManager,
 		workspace:       workspace,
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
@@ -67,6 +82,7 @@ func (a *App) Init() tea.Cmd {
 		a.fileTree.Init(),
 		a.selectedFiles.Init(),
 		a.chat.Init(),
+		a.personaDialog.Init(),
 		a.alertModel.Init(),
 	)
 }
@@ -80,6 +96,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 		a.promptDialog.SetSize(msg.Width, msg.Height)
+		a.personaDialog.SetSize(msg.Width, msg.Height)
 
 		// Update notification width to 30% of interface width, with reasonable bounds
 		notificationWidth := int(float64(msg.Width) * 0.3)
@@ -161,6 +178,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.configManager.Save()
 		return a, nil
 
+	case PersonaSelectionMsg:
+		// Update workspace state with new active personas
+		a.workspace.ActivePersonas = msg.ActivePersonas
+		a.configManager.Save()
+		return a, nil
+
 	case tea.KeyMsg:
 		// Handle global clipboard copy first
 		if msg.String() == "ctrl+y" {
@@ -168,7 +191,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.promptDialog.IsVisible() && a.promptDialog.GetContent() != "" {
 				promptToCopy = a.promptDialog.GetContent()
 			} else {
-				generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
+				generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value(), a.workspace.ActivePersonas)
 				if err != nil {
 					// Show error notification
 					alertCmd := a.alertModel.NewAlertCmd(bubbleup.ErrorKey, "error building prompt")
@@ -187,6 +210,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Show success notification
 			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "prompt copied")
 			return a, alertCmd
+		}
+
+		// Handle persona dialog input if visible
+		if a.personaDialog.IsVisible() {
+			model, cmd := a.personaDialog.Update(msg)
+			a.personaDialog = model
+			return a, cmd
 		}
 
 		// Handle prompt dialog input if visible
@@ -220,8 +250,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
 				return a, alertCmd
 			}
+		case a.settingsManager.GetPersonaMenuKey():
+			// Show persona selection dialog
+			a.personaDialog.SetActivePersonas(a.workspace.ActivePersonas)
+			a.personaDialog.Show()
+			return a, nil
 		case "ctrl+s":
-			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value())
+			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value(), a.workspace.ActivePersonas)
 			if err != nil {
 				// Handle error, maybe show an error message
 				// For now, we'll just log it
@@ -278,6 +313,13 @@ func (a *App) View() string {
 
 	// Main layout
 	mainLayout := a.mainLayout()
+
+	// Show persona dialog if visible (takes priority over prompt dialog)
+	if a.personaDialog.IsVisible() {
+		dialogView := a.personaDialog.View()
+		// Render with alert notifications
+		return a.alertModel.Render(dialogView)
+	}
 
 	// Show prompt dialog if visible
 	if a.promptDialog.IsVisible() {
@@ -347,12 +389,18 @@ func (a *App) mainLayout() string {
 		Padding(0, 2).
 		BorderForeground(lipgloss.Color("240"))
 
-	// Get current persona name, default to "default" if not set
-	currentPersona := a.workspace.CurrentPersona
-	if currentPersona == "" {
-		currentPersona = "default"
+	// Get active personas, default to "default" if none set
+	activePersonas := a.workspace.ActivePersonas
+	if len(activePersonas) == 0 {
+		activePersonas = []string{"default"}
 	}
-	headerContent := "Persona: " + currentPersona
+	
+	var headerContent string
+	if len(activePersonas) == 1 {
+		headerContent = "Persona: " + activePersonas[0]
+	} else {
+		headerContent = "Personas: " + strings.Join(activePersonas, ", ")
+	}
 	header := headerStyle.Render(headerContent)
 
 	// Create footer with menu button
@@ -369,7 +417,7 @@ func (a *App) mainLayout() string {
 		footerStyle = footerStyle.BorderForeground(lipgloss.Color("240"))
 	}
 
-	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ")"
+	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")"
 	footer := footerStyle.Render(footerContent)
 
 	// Layout the panels
