@@ -1,0 +1,7 @@
+# Coding Prompts TUI Configuration
+# This file contains default configuration for the coding-prompts TUI application
+# Copy this to ~/.config/coding-prompts/coding_prompts.toml and modify as needed
+
+[bindings]
+# Key binding for menu activation
+menu_activation = "x"

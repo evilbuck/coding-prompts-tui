@@ -40,11 +40,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize settings manager
+	settingsManager, err := config.NewSettingsManager()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing settings manager: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Get the workspace state
 	workspace := cfgManager.GetWorkspace(absPath)
 
 	// Initialize TUI application
-	app := tui.NewApp(absPath, cfgManager, workspace)
+	app := tui.NewApp(absPath, cfgManager, settingsManager, workspace)
 
 	// Create Bubble Tea program with alt screen and mouse support
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
