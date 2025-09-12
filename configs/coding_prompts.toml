@@ -29,3 +29,14 @@ shift_tab = "shift+tab"
 # Duration in seconds that notifications stay visible (default: 3)
 # Useful for debug mode - set higher value to read debug info easily
 notification_ttl = 5
+
+[debug]
+# Debug mode settings
+# Enable debug mode on startup (default: false)
+enabled = false
+# Key binding to toggle debug mode (default: "f11")
+toggle_key = "f11"
+# Enable file logging for debug messages (default: true when debug enabled)
+file_logging = true
+# Log file path relative to workspace (default: "logs/error.log")
+log_file = "logs/error.log"

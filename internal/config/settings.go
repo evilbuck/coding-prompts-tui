@@ -19,6 +19,7 @@ const (
 type UserSettings struct {
 	Bindings KeyBindings     `toml:"bindings"`
 	UI       UserUISettings  `toml:"ui"`
+	Debug    DebugSettings   `toml:"debug"`
 }
 
 // KeyBindings contains all key binding configurations
@@ -47,6 +48,14 @@ type ModeBindings struct {
 // UserUISettings represents user interface configuration options from TOML
 type UserUISettings struct {
 	NotificationTTL int `toml:"notification_ttl"`
+}
+
+// DebugSettings represents debug configuration options from TOML
+type DebugSettings struct {
+	Enabled     bool   `toml:"enabled"`      // Enable debug mode on startup
+	ToggleKey   string `toml:"toggle_key"`   // Key binding to toggle debug mode
+	FileLogging bool   `toml:"file_logging"` // Enable file logging for debug messages
+	LogFile     string `toml:"log_file"`     // Log file path relative to workspace
 }
 
 // SettingsManager handles loading and validation of user settings from TOML
@@ -266,6 +275,42 @@ func (m *SettingsManager) GetNotificationTTL() int {
 	return m.settings.UI.NotificationTTL
 }
 
+// Debug settings accessors
+
+// IsDebugEnabled returns whether debug mode should be enabled on startup
+func (m *SettingsManager) IsDebugEnabled() bool {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Debug.Enabled
+}
+
+// GetDebugToggleKey returns the key binding for toggling debug mode
+func (m *SettingsManager) GetDebugToggleKey() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	if m.settings.Debug.ToggleKey == "" {
+		return "f11" // Default F11
+	}
+	return m.settings.Debug.ToggleKey
+}
+
+// IsDebugFileLoggingEnabled returns whether file logging should be enabled for debug
+func (m *SettingsManager) IsDebugFileLoggingEnabled() bool {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Debug.FileLogging
+}
+
+// GetDebugLogFile returns the log file path for debug messages
+func (m *SettingsManager) GetDebugLogFile() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	if m.settings.Debug.LogFile == "" {
+		return "logs/error.log" // Default path
+	}
+	return m.settings.Debug.LogFile
+}
+
 // Reload reloads the configuration from disk
 func (m *SettingsManager) Reload() error {
 	m.mutex.Lock()
@@ -371,7 +416,8 @@ func (m *SettingsManager) reloadAndNotify() error {
 	
 	// Call onChange callback if settings actually changed
 	if onChange != nil && (m.hasBindingsChanged(&oldSettings.Bindings, &newSettings.Bindings) || 
-		m.hasUIChanged(&oldSettings.UI, &newSettings.UI)) {
+		m.hasUIChanged(&oldSettings.UI, &newSettings.UI) ||
+		m.hasDebugChanged(&oldSettings.Debug, &newSettings.Debug)) {
 		onChange(newSettings)
 	}
 	
@@ -411,6 +457,14 @@ func (m *SettingsManager) hasUIChanged(old, new *UserUISettings) bool {
 	return old.NotificationTTL != new.NotificationTTL
 }
 
+// hasDebugChanged checks if any debug settings have changed
+func (m *SettingsManager) hasDebugChanged(old, new *DebugSettings) bool {
+	return old.Enabled != new.Enabled ||
+		old.ToggleKey != new.ToggleKey ||
+		old.FileLogging != new.FileLogging ||
+		old.LogFile != new.LogFile
+}
+
 // getDefaultSettings returns the default settings
 func getDefaultSettings() *UserSettings {
 	return &UserSettings{
@@ -431,6 +485,12 @@ func getDefaultSettings() *UserSettings {
 		},
 		UI: UserUISettings{
 			NotificationTTL: 3, // Default 3 seconds
+		},
+		Debug: DebugSettings{
+			Enabled:     false,            // Debug disabled by default
+			ToggleKey:   "f11",            // F11 to toggle
+			FileLogging: true,             // Enable file logging when debug is on
+			LogFile:     "logs/error.log", // Default log file path
 		},
 	}
 }

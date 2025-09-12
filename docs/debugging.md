@@ -1,120 +1,162 @@
 # Debugging Guide
 
-This guide provides instructions for debugging the chat input connection issue where user input from the chat area isn't properly flowing to the generated prompt.
+This guide provides instructions for using the configurable debug system to troubleshoot issues in the coding-prompts TUI application.
 
-## Current Issue
+## Debug System Overview
 
-The application is showing "Test prompt" in the `<UserPrompt/>` section instead of the actual text typed by the user in the chat area.
+The application includes a configurable debug system that can be enabled through configuration or toggled during runtime. When enabled, it provides comprehensive logging of key events, menu activation, and internal state changes.
 
-## Debug Version
+## Debug Configuration
 
-The application has been instrumented with comprehensive debug logging to trace the flow of user input from the chat textarea through to the prompt builder.
+Debug settings are configured in `~/.config/coding-prompts/coding_prompts.toml`:
 
-## Testing Instructions
-
-### 1. Run the Application
-```bash
-./prompter .
+```toml
+[debug]
+# Enable debug mode on startup (default: false)
+enabled = false
+# Key binding to toggle debug mode (default: "f11")
+toggle_key = "f11"
+# Enable file logging for debug messages (default: true when debug enabled)
+file_logging = true
+# Log file path relative to workspace (default: "logs/error.log")
+log_file = "logs/error.log"
 ```
 
-### 2. Test the Complete Workflow
+## Using Debug Mode
 
-Follow this sequence to test the user input flow:
+### 1. Enable Debug Mode
 
-1. **Navigate to Chat Panel**
-   - Use Tab key to switch focus to the chat panel
-   - **Expected Debug Output:** `DEBUG (Focus): Switched to panel: 2` (ChatPanel = 2)
+You can enable debug mode in several ways:
 
-2. **Type Text in Chat Area**
-   - Type some test text in the chat textarea
-   - **Expected Debug Output:**
-     ```
-     DEBUG (App): Sending key to ChatPanel: [character]
-     DEBUG (Chat): Received key runes: [character]
-     DEBUG (Chat): Current value before update: [previous text]
-     DEBUG (Chat): Current value after update: [updated text]
-     ```
-
-3. **Generate Prompt with Ctrl+S**
-   - Press Ctrl+S to generate and display the prompt
-   - **Expected Debug Output:**
-     ```
-     DEBUG (Ctrl+S): Chat textarea value: [your typed text]
-     DEBUG (Ctrl+S): Chat textarea value length: [length]
-     DEBUG (Builder): Received userPrompt: [your typed text]
-     DEBUG (Builder): userPrompt length: [length]
-     ```
-
-4. **Copy Prompt with Ctrl+Shift+C**
-   - Press Ctrl+Shift+C to copy the prompt to clipboard
-   - **Expected Debug Output:**
-     ```
-     DEBUG: Chat textarea value: [your typed text]
-     DEBUG: Chat textarea value length: [length]
-     DEBUG (Builder): Received userPrompt: [your typed text]
-     DEBUG (Builder): userPrompt length: [length]
-     ```
-
-## Troubleshooting by Debug Output
-
-### Focus Issues
-- **Missing:** `DEBUG (Focus): Switched to panel: 2`
-- **Problem:** Tab navigation not switching to chat panel
-- **Solution:** Check focus management in app.go
-
-### Input Routing Issues
-- **Missing:** `DEBUG (App): Sending key to ChatPanel: [character]`
-- **Problem:** Keystrokes not being routed to chat panel when focused
-- **Solution:** Check panel update logic in app.go
-
-### Textarea Update Issues
-- **Missing:** `DEBUG (Chat): Received key runes:` or value not updating
-- **Problem:** Chat textarea not receiving or processing input
-- **Solution:** Check chat.go Update method and textarea integration
-
-### Value Retrieval Issues
-- **Wrong Value:** Debug shows different text than what was typed
-- **Problem:** State management issue between typing and retrieval
-- **Solution:** Check textarea.Value() method and state consistency
-
-### Prompt Builder Issues
-- **Wrong Value in Builder:** Builder receives different text than app sent
-- **Problem:** Parameter passing issue between app and builder
-- **Solution:** Check function call parameters and argument passing
-
-## Expected Behavior
-
-The debug output should show a clear flow:
-1. User switches to chat panel (focus change logged)
-2. User types characters (each keystroke logged)
-3. Textarea value updates with each character (before/after values logged)
-4. When generating prompt, textarea.Value() returns the typed text
-5. Prompt builder receives the correct user text
-6. Generated XML contains the user's actual input in `<UserPrompt/>`
-
-## Debug Code Locations
-
-### App-level Debug (internal/tui/app.go)
-- Focus switching debug (lines ~152, ~156)
-- Panel update routing debug (lines ~188-190)
-- Clipboard copy debug (lines ~112-114)
-- Ctrl+S prompt generation debug (lines ~159-161)
-
-### Chat Panel Debug (internal/tui/chat.go)
-- Key input reception debug (lines ~39-43)
-- Textarea value changes debug (lines ~48-52)
-
-### Prompt Builder Debug (internal/prompt/builder.go)
-- User prompt parameter debug (lines ~32-34)
-
-## Cleaning Up Debug Code
-
-Once the issue is identified and fixed, remove all debug `println()` statements from:
-- `internal/tui/app.go`
-- `internal/tui/chat.go` 
-- `internal/prompt/builder.go`
-
-Then rebuild the application:
-```bash
-go build -o prompter ./
+**Persistent (via configuration):**
+```toml
+[debug]
+enabled = true
 ```
+
+**Runtime Toggle:**
+- Press the configured toggle key (default: F11) to toggle debug mode
+- Look for "Debug mode ON/OFF" notification
+- Footer will show the current toggle key
+
+### 2. Debug Information
+
+When debug mode is active, you'll see:
+
+1. **Key Event Logging**
+   - All key presses are captured and displayed
+   - Shows key type, modifiers, and runes
+   - Helps debug key binding issues
+
+2. **Menu Activation Debugging**
+   - Shows menu activation attempts and results
+   - Displays expected vs. actual key combinations
+   - Useful for troubleshooting modal key bindings
+
+3. **Visual Feedback**
+   - Debug information appears as notifications
+   - Footer shows debug toggle status
+   - Current key information is displayed in real-time
+
+### 3. File Logging
+
+When `file_logging` is enabled:
+- Debug messages are written to the configured log file
+- Default location: `logs/error.log` in workspace
+- Log includes timestamps and session markers
+- Useful for persistent debugging across sessions
+
+## Troubleshooting Common Issues
+
+### Key Binding Issues
+
+When debug mode is active, key information is displayed for every key press:
+```
+Key: "alt+m", Type: KeyRune, Alt: true, Runes: [109]
+```
+
+**Common Problems:**
+- **Menu not activating:** Check if the debug output shows the correct key combination
+- **Wrong key detected:** Terminal may interpret key combinations differently
+- **Modifier issues:** Alt, Ctrl, Shift detection varies by terminal
+
+### Menu Mode Problems
+
+Debug output shows menu activation attempts:
+```
+Menu check: Legacy=false, Expected="alt+m", Got="alt+m"
+```
+
+**Troubleshooting:**
+- Compare "Expected" vs "Got" values
+- Legacy mode may affect key parsing
+- Terminal compatibility issues with complex key combinations
+
+### Configuration Issues
+
+**Debug not starting:** Check configuration syntax and file location
+**Toggle key not working:** Verify key binding syntax in config
+**File logging not working:** Check file permissions and directory existence
+
+### Log File Issues
+
+**Log file location:** Relative to workspace directory
+**Permissions:** Ensure write access to log directory
+**Disk space:** Check available space for log files
+
+## Configuration Examples
+
+### Enable Debug on Startup
+```toml
+[debug]
+enabled = true
+toggle_key = "f11"
+file_logging = true
+log_file = "debug.log"
+```
+
+### Custom Debug Key
+```toml
+[debug]
+enabled = false
+toggle_key = "ctrl+d"
+file_logging = true
+log_file = "logs/debug.log"
+```
+
+### Debug Without File Logging
+```toml
+[debug]
+enabled = false
+toggle_key = "f12"
+file_logging = false
+```
+
+## Debug Architecture
+
+The debug system is implemented across several components:
+
+### Configuration (`internal/config/settings.go`)
+- `DebugSettings` struct for TOML configuration
+- Settings validation and defaults
+- Thread-safe access methods
+
+### TUI Application (`internal/tui/app.go`)
+- Runtime debug mode toggle
+- Key event logging and display
+- Debug logger initialization
+- Integration with settings system
+
+### Key Components
+- Debug mode can be enabled via config or runtime toggle
+- File logging is optional and configurable
+- Toggle key is customizable through configuration
+- Debug information appears as notifications in the UI
+
+## Best Practices
+
+1. **Use file logging** for complex debugging sessions
+2. **Configure a comfortable toggle key** for your workflow
+3. **Disable debug in production** configurations
+4. **Monitor log file size** for long debugging sessions
+5. **Use notifications for real-time feedback** during development

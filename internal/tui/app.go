@@ -66,7 +66,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	personaDialog.SetActivePersonas(workspace.ActivePersonas)
 
 	// Initialize debug logger
-	debugLogger := initializeDebugLogger(targetDir)
+	debugLogger := initializeDebugLogger(targetDir, settingsManager)
 
 	app := &App{
 		targetDir:       targetDir,
@@ -81,6 +81,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		settingsManager: settingsManager,
 		personaManager:  personaManager,
 		workspace:       workspace,
+		debugMode:       settingsManager.IsDebugEnabled(), // Set from config
 		debugLogger:     debugLogger,
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
@@ -261,11 +262,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, alertCmd)
 		}
 
-		// Handle other key commands
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return a, tea.Quit
-		case "f11":
+		// Check for debug toggle key
+		debugToggleKey := a.settingsManager.GetDebugToggleKey()
+		if debugKeyCombination, err := config.ParseKeyBinding(debugToggleKey); err == nil && debugKeyCombination.MatchesKeyMsg(msg) {
 			// Toggle debug mode
 			a.debugMode = !a.debugMode
 			var message string
@@ -276,6 +275,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			alertCmd := a.createAlert(bubbleup.InfoKey, message)
 			return a, alertCmd
+		}
+
+		// Handle other key commands
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return a, tea.Quit
 		case "tab":
 			a.nextPanel()
 			return a, nil
@@ -470,10 +475,11 @@ func (a *App) mainLayout() string {
 	}
 	
 	var debugInfo string
+	debugToggleKey := a.settingsManager.GetDebugToggleKey()
 	if a.debugMode {
-		debugInfo = " • F11: debug OFF"
+		debugInfo = fmt.Sprintf(" • %s: debug OFF", debugToggleKey)
 	} else {
-		debugInfo = " • F11: debug"
+		debugInfo = fmt.Sprintf(" • %s: debug", debugToggleKey)
 	}
 	
 	footerContent := "menu (" + menuActivationDisplay + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")" + debugInfo
@@ -656,10 +662,17 @@ func (a *App) exitMenuMode() {
 	a.focused = ChatPanel
 }
 
-// initializeDebugLogger creates and configures a debug logger that writes to logs/error.log
-func initializeDebugLogger(targetDir string) *log.Logger {
-	logDir := filepath.Join(targetDir, "logs")
-	logFile := filepath.Join(logDir, "error.log")
+// initializeDebugLogger creates and configures a debug logger based on settings
+func initializeDebugLogger(targetDir string, settingsManager *config.SettingsManager) *log.Logger {
+	// Only initialize logger if file logging is enabled
+	if !settingsManager.IsDebugFileLoggingEnabled() {
+		return nil
+	}
+	
+	// Get log file path from config
+	logFilePath := settingsManager.GetDebugLogFile()
+	fullLogPath := filepath.Join(targetDir, logFilePath)
+	logDir := filepath.Dir(fullLogPath)
 	
 	// Create logs directory if it doesn't exist
 	if err := os.MkdirAll(logDir, 0755); err != nil {
@@ -668,7 +681,7 @@ func initializeDebugLogger(targetDir string) *log.Logger {
 	}
 	
 	// Open log file in append mode, create if it doesn't exist
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(fullLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		// If we can't open the log file, return nil logger
 		return nil
