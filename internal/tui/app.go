@@ -28,6 +28,24 @@ const (
 	FooterMenuPanel
 )
 
+// State change messages for reactive system
+type FocusChangeMsg struct {
+	Panel FocusedPanel
+}
+
+type MenuModeChangeMsg struct {
+	Enabled bool
+}
+
+type DebugModeChangeMsg struct {
+	Enabled bool
+}
+
+type LayoutChangeMsg struct {
+	Width  int
+	Height int
+}
+
 // App represents the main application model
 type App struct {
 	targetDir       string
@@ -55,11 +73,11 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	fileTree := NewFileTreeModel(targetDir, workspace.SelectedFiles)
 	selectedFiles := NewSelectedFilesModel(cfgManager)
 	chat := NewChatModel(workspace.ChatInput)
-	
+
 	// Initialize persona manager and discover personas
 	personaManager := persona.NewManager(targetDir)
 	personaManager.DiscoverPersonas()
-	
+
 	// Initialize persona dialog
 	personaDialog := NewPersonaDialogModel()
 	personaDialog.SetAvailablePersonas(personaManager.GetAvailablePersonas())
@@ -103,43 +121,23 @@ func (a *App) Init() tea.Cmd {
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Handle state change messages first with centralized validation
+	if stateModel, stateCmd := a.handleStateChange(msg); stateCmd != nil {
+		cmds = append(cmds, stateCmd)
+		return stateModel, tea.Batch(cmds...)
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
-		a.promptDialog.SetSize(msg.Width, msg.Height)
-		a.personaDialog.SetSize(msg.Width, msg.Height)
-
-		// Update notification width to 30% of interface width, with reasonable bounds
-		notificationWidth := int(float64(msg.Width) * 0.3)
-		if notificationWidth < 20 {
-			notificationWidth = 20 // Minimum width for readability
-		} else if notificationWidth > 80 {
-			notificationWidth = 80 // Maximum width to prevent overly wide notifications
-		}
-
-		// Create new AlertModel with updated width
-		a.alertModel = *bubbleup.NewAlertModel(notificationWidth, true)
-
-		// Propagate calculated panel sizes to sub-models that need them
-		// These calculations must match exactly what mainLayout() gives to the border
-		headerHeight := 3 // Single line header with padding
-		footerHeight := 3 // Single line footer with padding
-		availableHeight := a.height - headerHeight - footerHeight
-		topHeight := int(float64(availableHeight) * 0.66)
-		leftWidth := a.width / 2
-		// The border style sets Width(leftWidth-2) and Height(topHeight-2)
-		// So the content area inside the border is even smaller
-		// We need to account for the border padding (typically 1 char on each side)
-		contentWidth := leftWidth - 2 - 2  // border width minus border padding
-		contentHeight := topHeight - 2 - 2 // border height minus border padding
-		a.fileTree.SetSize(contentWidth, contentHeight)
-		return a, nil
+		// Use reactive pattern for layout changes
+		return a, a.updateLayout(msg.Width, msg.Height)
 
 	case tea.MouseMsg:
 		// Handle mouse clicks for panel focus
 		if msg.Type == tea.MouseLeft {
-			a.handleMouseClick(msg.X, msg.Y)
+			if mouseCmd := a.handleMouseClick(msg.X, msg.Y); mouseCmd != nil {
+				cmds = append(cmds, mouseCmd)
+			}
 		}
 		// Let the currently focused panel handle the mouse event
 		switch a.focused {
@@ -196,6 +194,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.configManager.Save()
 		return a, nil
 
+	// Bindings
 	case tea.KeyMsg:
 		// Handle global clipboard copy first
 		if msg.String() == "ctrl+y" {
@@ -239,9 +238,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Handle menu activation first (supports both legacy and new modes)
-		if a.handleMenuActivation(msg) {
-			alertCmd := a.createAlert(bubbleup.InfoKey, "menu mode activated")
-			return a, alertCmd
+		if menuCmd := a.handleMenuActivation(msg); menuCmd != nil {
+			return a, menuCmd
 		}
 
 		// Debug mode: show key information (after menu handling so we can see if activation works)
@@ -251,12 +249,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				debugInfo = a.lastDebugInfo + " | " + debugInfo
 				a.lastDebugInfo = ""
 			}
-			
+
 			// Log to file
 			if a.debugLogger != nil {
 				a.debugLogger.Printf("DEBUG: %s", debugInfo)
 			}
-			
+
 			// Also show as notification in TUI (but don't return immediately - let other handlers run)
 			alertCmd := a.createAlert(bubbleup.InfoKey, debugInfo)
 			cmds = append(cmds, alertCmd)
@@ -265,16 +263,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Check for debug toggle key
 		debugToggleKey := a.settingsManager.GetDebugToggleKey()
 		if debugKeyCombination, err := config.ParseKeyBinding(debugToggleKey); err == nil && debugKeyCombination.MatchesKeyMsg(msg) {
-			// Toggle debug mode
-			a.debugMode = !a.debugMode
-			var message string
-			if a.debugMode {
-				message = "Debug mode ON - keys will be shown"
-			} else {
-				message = "Debug mode OFF"
-			}
-			alertCmd := a.createAlert(bubbleup.InfoKey, message)
-			return a, alertCmd
+			// Toggle debug mode using reactive pattern
+			return a, a.toggleDebugMode()
 		}
 
 		// Handle other key commands
@@ -282,16 +272,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return a, tea.Quit
 		case "tab":
-			a.nextPanel()
-			return a, nil
+			return a, a.nextPanel()
 		case "shift+tab":
-			a.prevPanel()
-			return a, nil
+			return a, a.prevPanel()
 		case "escape":
 			// If in menu binding mode, exit to normal mode
 			if a.menuBindingMode {
-				a.exitMenuMode()
-				return a, nil
+				return a, a.exitMenuMode()
 			}
 		case "ctrl+s":
 			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value(), a.workspace.ActivePersonas)
@@ -443,7 +430,7 @@ func (a *App) mainLayout() string {
 	if len(activePersonas) == 0 {
 		activePersonas = []string{"default"}
 	}
-	
+
 	var headerContent string
 	if len(activePersonas) == 1 {
 		headerContent = "Persona: " + activePersonas[0]
@@ -458,7 +445,7 @@ func (a *App) mainLayout() string {
 		Width(a.width-2).
 		Height(1).
 		Padding(0, 2)
-	
+
 	// Apply focused style to footer if it has focus
 	if a.focused == FooterMenuPanel {
 		footerStyle = footerStyle.BorderForeground(lipgloss.Color("69"))
@@ -473,7 +460,7 @@ func (a *App) mainLayout() string {
 	} else {
 		menuActivationDisplay = a.settingsManager.GetMenuModeActivation()
 	}
-	
+
 	var debugInfo string
 	debugToggleKey := a.settingsManager.GetDebugToggleKey()
 	if a.debugMode {
@@ -481,7 +468,7 @@ func (a *App) mainLayout() string {
 	} else {
 		debugInfo = fmt.Sprintf(" • %s: debug", debugToggleKey)
 	}
-	
+
 	footerContent := "menu (" + menuActivationDisplay + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")" + debugInfo
 	footer := footerStyle.Render(footerContent)
 
@@ -499,58 +486,54 @@ func (a *App) createAlert(alertType string, message string) tea.Cmd {
 	// 1. Find a way to configure TTL in bubbleup
 	// 2. Switch to a different notification library
 	// 3. Create a custom notification system
-	
+
 	// Get the configured TTL (currently unused but ready)
 	ttlSeconds := a.settingsManager.GetNotificationTTL()
 	_ = ttlSeconds // Silence unused variable warning
-	
+
 	return a.alertModel.NewAlertCmd(alertType, message)
 }
 
-// nextPanel moves focus to the next panel
-func (a *App) nextPanel() {
+// nextPanel returns a command to move focus to the next panel
+func (a *App) nextPanel() tea.Cmd {
+	var nextFocus FocusedPanel
 	switch a.focused {
 	case FileTreePanel:
-		a.focused = SelectedFilesPanel
+		nextFocus = SelectedFilesPanel
 	case SelectedFilesPanel:
-		a.focused = ChatPanel
+		nextFocus = ChatPanel
 	case ChatPanel:
-		a.focused = FooterMenuPanel
+		nextFocus = FooterMenuPanel
 	case FooterMenuPanel:
-		a.focused = FileTreePanel
+		nextFocus = FileTreePanel
 	default:
 		// Reset to FileTreePanel if focus state is invalid
-		a.focused = FileTreePanel
+		nextFocus = FileTreePanel
 	}
-	// Update menu binding mode based on footer focus (legacy mode only)
-	if a.settingsManager.IsLegacyMode() {
-		a.menuBindingMode = (a.focused == FooterMenuPanel)
-	}
+	return a.setFocus(nextFocus)
 }
 
-// prevPanel moves focus to the previous panel
-func (a *App) prevPanel() {
+// prevPanel returns a command to move focus to the previous panel
+func (a *App) prevPanel() tea.Cmd {
+	var prevFocus FocusedPanel
 	switch a.focused {
 	case FileTreePanel:
-		a.focused = FooterMenuPanel
+		prevFocus = FooterMenuPanel
 	case SelectedFilesPanel:
-		a.focused = FileTreePanel
+		prevFocus = FileTreePanel
 	case ChatPanel:
-		a.focused = SelectedFilesPanel
+		prevFocus = SelectedFilesPanel
 	case FooterMenuPanel:
-		a.focused = ChatPanel
+		prevFocus = ChatPanel
 	default:
 		// Reset to FileTreePanel if focus state is invalid
-		a.focused = FileTreePanel
+		prevFocus = FileTreePanel
 	}
-	// Update menu binding mode based on footer focus (legacy mode only)
-	if a.settingsManager.IsLegacyMode() {
-		a.menuBindingMode = (a.focused == FooterMenuPanel)
-	}
+	return a.setFocus(prevFocus)
 }
 
-// handleMouseClick determines which panel was clicked and sets focus accordingly
-func (a *App) handleMouseClick(x, y int) {
+// handleMouseClick determines which panel was clicked and returns a command to set focus
+func (a *App) handleMouseClick(x, y int) tea.Cmd {
 	// Calculate panel dimensions - these must match mainLayout()
 	headerHeight := 3 // Single line header with padding
 	footerHeight := 3 // Single line footer with padding
@@ -562,28 +545,31 @@ func (a *App) handleMouseClick(x, y int) {
 	// Check if click is in the header area
 	if y < headerHeight {
 		// Header clicked - could add header focus support in the future
-		return
+		return nil
 	}
+	
+	var targetFocus FocusedPanel
 	// Check if click is in the top panel area (file tree or selected files panels)
 	if y < headerHeight+topHeight {
 		// Check if click is in the left half (file tree panel)
 		if x < leftWidth {
-			a.focused = FileTreePanel
+			targetFocus = FileTreePanel
 		} else {
 			// Click is in the right half (selected files panel)
-			a.focused = SelectedFilesPanel
+			targetFocus = SelectedFilesPanel
 		}
 	} else if y < headerHeight+topHeight+bottomHeight {
 		// Click is in the chat area
-		a.focused = ChatPanel
+		targetFocus = ChatPanel
 	} else if y < headerHeight+topHeight+bottomHeight+footerHeight {
 		// Click is in the footer area
-		a.focused = FooterMenuPanel
+		targetFocus = FooterMenuPanel
+	} else {
+		// Click outside all areas
+		return nil
 	}
-	// Update menu binding mode based on footer focus (legacy mode only)
-	if a.settingsManager.IsLegacyMode() {
-		a.menuBindingMode = (a.focused == FooterMenuPanel)
-	}
+	
+	return a.setFocus(targetFocus)
 }
 
 // updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
@@ -607,8 +593,8 @@ func (a *App) updateSelectedFilesFromSelection(selectedFiles map[string]bool) {
 }
 
 // handleMenuActivation checks if the given key message should activate menu mode
-// Returns true if menu mode was activated, false otherwise
-func (a *App) handleMenuActivation(msg tea.KeyMsg) bool {
+// Returns a command if menu mode should be activated, nil otherwise
+func (a *App) handleMenuActivation(msg tea.KeyMsg) tea.Cmd {
 	// Debug: Always show what we're checking for
 	if a.debugMode {
 		legacyMode := a.settingsManager.IsLegacyMode()
@@ -623,43 +609,41 @@ func (a *App) handleMenuActivation(msg tea.KeyMsg) bool {
 		// Legacy mode: menu binding only works when footer has focus
 		if a.focused == FooterMenuPanel && msg.String() == a.settingsManager.GetMenuActivationKey() {
 			// In legacy mode, this just shows a notification since menu is already "active"
-			return true
+			return a.createAlert("info", "menu mode activated")
 		}
-		return false
+		return nil
 	}
 
 	// New mode: check for modifier-based activation
 	activationKey := a.settingsManager.GetMenuModeActivation()
 	if activationKey == "" {
-		return false
+		return nil
 	}
 
 	keyCombination, err := config.ParseKeyBinding(activationKey)
 	if err != nil {
 		// Invalid key combination, ignore
-		return false
+		return nil
 	}
 
 	if keyCombination.MatchesKeyMsg(msg) {
-		a.enterMenuMode()
-		return true
+		return tea.Batch(
+			a.enterMenuMode(),
+			a.createAlert("info", "menu mode activated"),
+		)
 	}
 
-	return false
+	return nil
 }
 
-// enterMenuMode activates menu binding mode
-func (a *App) enterMenuMode() {
-	a.menuBindingMode = true
-	// Optionally focus the footer to provide visual feedback
-	a.focused = FooterMenuPanel
+// enterMenuMode returns a command to activate menu binding mode
+func (a *App) enterMenuMode() tea.Cmd {
+	return a.setMenuMode(true)
 }
 
-// exitMenuMode deactivates menu binding mode  
-func (a *App) exitMenuMode() {
-	a.menuBindingMode = false
-	// Return to chat panel for continued typing
-	a.focused = ChatPanel
+// exitMenuMode returns a command to deactivate menu binding mode
+func (a *App) exitMenuMode() tea.Cmd {
+	return a.setMenuMode(false)
 }
 
 // initializeDebugLogger creates and configures a debug logger based on settings
@@ -668,30 +652,211 @@ func initializeDebugLogger(targetDir string, settingsManager *config.SettingsMan
 	if !settingsManager.IsDebugFileLoggingEnabled() {
 		return nil
 	}
-	
+
 	// Get log file path from config
 	logFilePath := settingsManager.GetDebugLogFile()
 	fullLogPath := filepath.Join(targetDir, logFilePath)
 	logDir := filepath.Dir(fullLogPath)
-	
+
 	// Create logs directory if it doesn't exist
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		// If we can't create the logs directory, return nil logger
 		return nil
 	}
-	
+
 	// Open log file in append mode, create if it doesn't exist
-	file, err := os.OpenFile(fullLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(fullLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		// If we can't open the log file, return nil logger
 		return nil
 	}
-	
+
 	// Create logger with timestamp prefix
 	logger := log.New(file, "", log.LstdFlags)
-	
+
 	// Log initialization message
 	logger.Printf("=== Debug session started at %s ===", time.Now().Format("2006-01-02 15:04:05"))
-	
+
 	return logger
+}
+
+// State command generators for reactive system
+func (a *App) setFocus(panel FocusedPanel) tea.Cmd {
+	return func() tea.Msg {
+		return FocusChangeMsg{Panel: panel}
+	}
+}
+
+func (a *App) setMenuMode(enabled bool) tea.Cmd {
+	return func() tea.Msg {
+		return MenuModeChangeMsg{Enabled: enabled}
+	}
+}
+
+func (a *App) toggleDebugMode() tea.Cmd {
+	return func() tea.Msg {
+		return DebugModeChangeMsg{Enabled: !a.debugMode}
+	}
+}
+
+func (a *App) updateLayout(width, height int) tea.Cmd {
+	return func() tea.Msg {
+		return LayoutChangeMsg{Width: width, Height: height}
+	}
+}
+
+// handleStateChange processes all state change messages with validation
+func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case FocusChangeMsg:
+		// Validate focus change
+		if !a.isValidPanel(msg.Panel) {
+			if a.debugMode {
+				cmds = append(cmds, a.createAlert("error", "Invalid focus panel"))
+			}
+			return a, tea.Batch(cmds...)
+		}
+
+		// Only change if different
+		if a.focused != msg.Panel {
+			oldFocus := a.focused
+			a.focused = msg.Panel
+			
+			// Update dependent state: menu binding mode in legacy mode
+			if a.settingsManager.IsLegacyMode() {
+				oldMenuMode := a.menuBindingMode
+				a.menuBindingMode = (msg.Panel == FooterMenuPanel)
+				
+				// Debug log state changes
+				if a.debugMode && a.debugLogger != nil {
+					a.debugLogger.Printf("STATE: Focus changed %v→%v, MenuMode %v→%v", 
+						oldFocus, a.focused, oldMenuMode, a.menuBindingMode)
+				}
+			}
+		}
+
+	case MenuModeChangeMsg:
+		// Only change if different
+		if a.menuBindingMode != msg.Enabled {
+			oldMenuMode := a.menuBindingMode
+			a.menuBindingMode = msg.Enabled
+			
+			// Update dependent state: focus to footer when enabling menu mode
+			if msg.Enabled {
+				oldFocus := a.focused
+				a.focused = FooterMenuPanel
+				
+				// Debug log state changes
+				if a.debugMode && a.debugLogger != nil {
+					a.debugLogger.Printf("STATE: MenuMode %v→%v, Focus %v→%v", 
+						oldMenuMode, a.menuBindingMode, oldFocus, a.focused)
+				}
+			}
+		}
+
+	case DebugModeChangeMsg:
+		// Only change if different
+		if a.debugMode != msg.Enabled {
+			oldDebugMode := a.debugMode
+			a.debugMode = msg.Enabled
+			
+			// Debug log state changes (before mode is disabled)
+			if a.debugLogger != nil {
+				a.debugLogger.Printf("STATE: DebugMode %v→%v", oldDebugMode, a.debugMode)
+			}
+			
+			// Show notification about debug mode change
+			var message string
+			if msg.Enabled {
+				message = "Debug mode ON - keys will be shown"
+			} else {
+				message = "Debug mode OFF"
+			}
+			cmds = append(cmds, a.createAlert("info", message))
+		}
+
+	case LayoutChangeMsg:
+		// Validate layout dimensions
+		if msg.Width <= 0 || msg.Height <= 0 {
+			if a.debugMode {
+				cmds = append(cmds, a.createAlert("error", "Invalid layout dimensions"))
+			}
+			return a, tea.Batch(cmds...)
+		}
+
+		// Only update if different
+		if a.width != msg.Width || a.height != msg.Height {
+			oldWidth, oldHeight := a.width, a.height
+			a.width = msg.Width
+			a.height = msg.Height
+			
+			// Update dialogs with new size
+			a.promptDialog.SetSize(msg.Width, msg.Height)
+			a.personaDialog.SetSize(msg.Width, msg.Height)
+
+			// Update notification width to 30% of interface width, with reasonable bounds
+			notificationWidth := int(float64(msg.Width) * 0.3)
+			if notificationWidth < 20 {
+				notificationWidth = 20 // Minimum width for readability
+			} else if notificationWidth > 80 {
+				notificationWidth = 80 // Maximum width to prevent overly wide notifications
+			}
+
+			// Create new AlertModel with updated width
+			a.alertModel = *bubbleup.NewAlertModel(notificationWidth, true)
+
+			// Propagate calculated panel sizes to sub-models that need them
+			headerHeight := 3 // Single line header with padding
+			footerHeight := 3 // Single line footer with padding
+			availableHeight := a.height - headerHeight - footerHeight
+			topHeight := int(float64(availableHeight) * 0.66)
+			leftWidth := a.width / 2
+			contentWidth := leftWidth - 2 - 2  // border width minus border padding
+			contentHeight := topHeight - 2 - 2 // border height minus border padding
+			a.fileTree.SetSize(contentWidth, contentHeight)
+			
+			// Debug log state changes
+			if a.debugMode && a.debugLogger != nil {
+				a.debugLogger.Printf("STATE: Layout changed %dx%d→%dx%d", 
+					oldWidth, oldHeight, a.width, a.height)
+			}
+		}
+
+	default:
+		// Not a state change message, return unchanged
+		return a, nil
+	}
+
+	return a, tea.Batch(cmds...)
+}
+
+// State validation helpers
+func (a *App) isValidPanel(panel FocusedPanel) bool {
+	return panel >= FileTreePanel && panel <= FooterMenuPanel
+}
+
+// validateStateInvariants checks that the current state is consistent
+func (a *App) validateStateInvariants() error {
+	// Check focus is valid
+	if !a.isValidPanel(a.focused) {
+		return fmt.Errorf("invalid focus panel: %v", a.focused)
+	}
+
+	// Check menu binding mode consistency in legacy mode
+	if a.settingsManager.IsLegacyMode() {
+		expectedMenuMode := (a.focused == FooterMenuPanel)
+		if a.menuBindingMode != expectedMenuMode {
+			return fmt.Errorf("menu binding mode %v inconsistent with focus %v in legacy mode", 
+				a.menuBindingMode, a.focused)
+		}
+	}
+
+	// Check layout dimensions are valid
+	if a.width < 0 || a.height < 0 {
+		return fmt.Errorf("invalid layout dimensions: %dx%d", a.width, a.height)
+	}
+
+	return nil
 }
