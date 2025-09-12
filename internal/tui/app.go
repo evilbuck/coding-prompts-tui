@@ -66,6 +66,7 @@ type App struct {
 	debugMode       bool
 	lastDebugInfo   string
 	debugLogger     *log.Logger
+	layoutConfig    *LayoutConfig
 }
 
 // NewApp creates a new application instance
@@ -101,6 +102,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		workspace:       workspace,
 		debugMode:       settingsManager.IsDebugEnabled(), // Set from config
 		debugLogger:     debugLogger,
+		layoutConfig:    NewLayoutConfig(),
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
 	return app
@@ -369,14 +371,11 @@ func (a *App) View() string {
 }
 
 func (a *App) mainLayout() string {
-	// Calculate panel dimensions with header and footer
-	headerHeight := 3 // Single line header with padding
-	footerHeight := 3 // Single line footer with padding
-	availableHeight := a.height - headerHeight - footerHeight
-	topHeight := int(float64(availableHeight) * 0.66)
-	bottomHeight := availableHeight - topHeight
-	leftWidth := a.width / 2
-	rightWidth := a.width - leftWidth
+	// Calculate panel dimensions using layout config
+	topHeight := a.layoutConfig.TopPanelHeight(a.height)
+	bottomHeight := a.layoutConfig.BottomPanelHeight(a.height)
+	leftWidth := a.layoutConfig.LeftPanelWidth(a.width)
+	rightWidth := a.layoutConfig.RightPanelWidth(a.width)
 
 	// Create styles for panels
 	focusedBorder := lipgloss.NewStyle().
@@ -388,39 +387,39 @@ func (a *App) mainLayout() string {
 		BorderForeground(lipgloss.Color("240"))
 
 	// File tree panel (top-left)
-	fileTreeStyle := normalBorder
-	if a.focused == FileTreePanel {
-		fileTreeStyle = focusedBorder
-	}
-	fileTreePanel := fileTreeStyle.
-		Width(leftWidth - 2).
-		Height(topHeight - 2).
-		Render(a.fileTree.View())
+	fileTreePanel := CreatePanel(
+		a.fileTree.View(),
+		a.focused == FileTreePanel,
+		normalBorder,
+		focusedBorder,
+		StretchWidth(leftWidth, true),
+		StretchHeight(topHeight, true),
+	)
 
-	// Selected files panel (top-right)
-	selectedStyle := normalBorder
-	if a.focused == SelectedFilesPanel {
-		selectedStyle = focusedBorder
-	}
-	selectedPanel := selectedStyle.
-		Width(rightWidth - 2).
-		Height(topHeight - 2).
-		Render(a.selectedFiles.View())
+	// Chat panel (top-right)
+	chatPanel := CreatePanel(
+		a.chat.View(),
+		a.focused == ChatPanel,
+		normalBorder,
+		focusedBorder,
+		StretchWidth(rightWidth, true),
+		StretchHeight(topHeight, true),
+	)
 
-	// Chat panel (bottom)
-	chatStyle := normalBorder
-	if a.focused == ChatPanel {
-		chatStyle = focusedBorder
-	}
-	chatPanel := chatStyle.
-		Width(a.width - 2).
-		Height(bottomHeight - 2).
-		Render(a.chat.View())
+	// Selected files panel (middle row, full width)
+	selectedPanel := CreatePanel(
+		a.selectedFiles.View(),
+		a.focused == SelectedFilesPanel,
+		normalBorder,
+		focusedBorder,
+		StretchWidth(a.width, true),
+		StretchHeight(bottomHeight, true),
+	)
 
 	// Create header with persona information
 	headerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		Width(a.width-2).
+		Width(StretchWidth(a.width, true)).
 		Height(1).
 		Padding(0, 2).
 		BorderForeground(lipgloss.Color("240"))
@@ -442,7 +441,7 @@ func (a *App) mainLayout() string {
 	// Create footer with menu button
 	footerStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		Width(a.width-2).
+		Width(StretchWidth(a.width, true)).
 		Height(1).
 		Padding(0, 2)
 
@@ -473,9 +472,11 @@ func (a *App) mainLayout() string {
 	footer := footerStyle.Render(footerContent)
 
 	// Layout the panels
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
+	// topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, chatPanel)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, topRow, chatPanel, footer)
+	// return lipgloss.JoinVertical(lipgloss.Left, header, topRow, chatPanel, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, topRow, selectedPanel, footer)
 }
 
 // createAlert creates an alert command with configured TTL
@@ -534,20 +535,19 @@ func (a *App) prevPanel() tea.Cmd {
 
 // handleMouseClick determines which panel was clicked and returns a command to set focus
 func (a *App) handleMouseClick(x, y int) tea.Cmd {
-	// Calculate panel dimensions - these must match mainLayout()
-	headerHeight := 3 // Single line header with padding
-	footerHeight := 3 // Single line footer with padding
-	availableHeight := a.height - headerHeight - footerHeight
-	topHeight := int(float64(availableHeight) * 0.66)
-	bottomHeight := availableHeight - topHeight
-	leftWidth := a.width / 2
+	// Calculate panel dimensions using layout config - matches mainLayout()
+	headerHeight := a.layoutConfig.HeaderHeight
+	footerHeight := a.layoutConfig.FooterHeight
+	topHeight := a.layoutConfig.TopPanelHeight(a.height)
+	bottomHeight := a.layoutConfig.BottomPanelHeight(a.height)
+	leftWidth := a.layoutConfig.LeftPanelWidth(a.width)
 
 	// Check if click is in the header area
 	if y < headerHeight {
 		// Header clicked - could add header focus support in the future
 		return nil
 	}
-	
+
 	var targetFocus FocusedPanel
 	// Check if click is in the top panel area (file tree or selected files panels)
 	if y < headerHeight+topHeight {
@@ -568,7 +568,7 @@ func (a *App) handleMouseClick(x, y int) tea.Cmd {
 		// Click outside all areas
 		return nil
 	}
-	
+
 	return a.setFocus(targetFocus)
 }
 
@@ -723,15 +723,15 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.focused != msg.Panel {
 			oldFocus := a.focused
 			a.focused = msg.Panel
-			
+
 			// Update dependent state: menu binding mode in legacy mode
 			if a.settingsManager.IsLegacyMode() {
 				oldMenuMode := a.menuBindingMode
 				a.menuBindingMode = (msg.Panel == FooterMenuPanel)
-				
+
 				// Debug log state changes
 				if a.debugMode && a.debugLogger != nil {
-					a.debugLogger.Printf("STATE: Focus changed %v→%v, MenuMode %v→%v", 
+					a.debugLogger.Printf("STATE: Focus changed %v→%v, MenuMode %v→%v",
 						oldFocus, a.focused, oldMenuMode, a.menuBindingMode)
 				}
 			}
@@ -742,15 +742,15 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.menuBindingMode != msg.Enabled {
 			oldMenuMode := a.menuBindingMode
 			a.menuBindingMode = msg.Enabled
-			
+
 			// Update dependent state: focus to footer when enabling menu mode
 			if msg.Enabled {
 				oldFocus := a.focused
 				a.focused = FooterMenuPanel
-				
+
 				// Debug log state changes
 				if a.debugMode && a.debugLogger != nil {
-					a.debugLogger.Printf("STATE: MenuMode %v→%v, Focus %v→%v", 
+					a.debugLogger.Printf("STATE: MenuMode %v→%v, Focus %v→%v",
 						oldMenuMode, a.menuBindingMode, oldFocus, a.focused)
 				}
 			}
@@ -761,12 +761,12 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.debugMode != msg.Enabled {
 			oldDebugMode := a.debugMode
 			a.debugMode = msg.Enabled
-			
+
 			// Debug log state changes (before mode is disabled)
 			if a.debugLogger != nil {
 				a.debugLogger.Printf("STATE: DebugMode %v→%v", oldDebugMode, a.debugMode)
 			}
-			
+
 			// Show notification about debug mode change
 			var message string
 			if msg.Enabled {
@@ -791,7 +791,7 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 			oldWidth, oldHeight := a.width, a.height
 			a.width = msg.Width
 			a.height = msg.Height
-			
+
 			// Update dialogs with new size
 			a.promptDialog.SetSize(msg.Width, msg.Height)
 			a.personaDialog.SetSize(msg.Width, msg.Height)
@@ -816,10 +816,10 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentWidth := leftWidth - 2 - 2  // border width minus border padding
 			contentHeight := topHeight - 2 - 2 // border height minus border padding
 			a.fileTree.SetSize(contentWidth, contentHeight)
-			
+
 			// Debug log state changes
 			if a.debugMode && a.debugLogger != nil {
-				a.debugLogger.Printf("STATE: Layout changed %dx%d→%dx%d", 
+				a.debugLogger.Printf("STATE: Layout changed %dx%d→%dx%d",
 					oldWidth, oldHeight, a.width, a.height)
 			}
 		}
@@ -848,7 +848,7 @@ func (a *App) validateStateInvariants() error {
 	if a.settingsManager.IsLegacyMode() {
 		expectedMenuMode := (a.focused == FooterMenuPanel)
 		if a.menuBindingMode != expectedMenuMode {
-			return fmt.Errorf("menu binding mode %v inconsistent with focus %v in legacy mode", 
+			return fmt.Errorf("menu binding mode %v inconsistent with focus %v in legacy mode",
 				a.menuBindingMode, a.focused)
 		}
 	}
