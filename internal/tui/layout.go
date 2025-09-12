@@ -38,9 +38,13 @@ func (lc *LayoutConfig) BottomPanelHeight(totalHeight int) int {
 	return availableHeight - topHeight
 }
 
+func (lc *LayoutConfig) CalcPanelWidth(totalWidth int, percentage float64) int {
+	return int(float64(totalWidth) * percentage / 100)
+}
+
 // LeftPanelWidth calculates the width for left panels (50% split)
 func (lc *LayoutConfig) LeftPanelWidth(totalWidth int) int {
-	return totalWidth / 2
+	return lc.CalcPanelWidth(totalWidth, 30)
 }
 
 // RightPanelWidth calculates the width for right panels
@@ -83,3 +87,4 @@ func CreatePanel(content string, focused bool, normalStyle, focusedStyle lipglos
 	style := FocusStyle(focused, normalStyle, focusedStyle)
 	return PanelStyle(style, width, height).Render(content)
 }
+
