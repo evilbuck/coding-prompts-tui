@@ -21,8 +21,19 @@ func TestSettingsManager_Load_DefaultSettings(t *testing.T) {
 		t.Fatalf("Expected no error loading default settings, got: %v", err)
 	}
 	
-	if manager.settings.Bindings.MenuActivation != "x" {
-		t.Errorf("Expected default menu_activation to be 'x', got: %q", manager.settings.Bindings.MenuActivation)
+	// In the new default settings, legacy bindings should be empty
+	if manager.settings.Bindings.MenuActivation != "" {
+		t.Errorf("Expected default menu_activation to be empty (new mode), got: %q", manager.settings.Bindings.MenuActivation)
+	}
+	
+	// Check new mode-based default
+	if manager.settings.Bindings.MenuMode.Activation != "alt+m" {
+		t.Errorf("Expected default menu_mode.activation to be 'alt+m', got: %q", manager.settings.Bindings.MenuMode.Activation)
+	}
+	
+	// Check UI settings default
+	if manager.settings.UI.NotificationTTL != 3 {
+		t.Errorf("Expected default notification_ttl to be 3, got: %d", manager.settings.UI.NotificationTTL)
 	}
 }
 
@@ -85,9 +96,9 @@ func TestSettingsManager_Validate_EmptyMenuActivation(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "coding_prompts.toml")
 	
-	// Create TOML with empty menu_activation
-	emptyTOML := `[bindings]
-menu_activation = ""`
+	// Create TOML with empty menu_mode.activation (new format)
+	emptyTOML := `[bindings.menu_mode]
+activation = ""`
 	
 	err := os.WriteFile(configPath, []byte(emptyTOML), 0644)
 	if err != nil {
@@ -103,8 +114,8 @@ menu_activation = ""`
 		t.Fatal("Expected validation error for empty menu_activation, got nil")
 	}
 	
-	if !strings.Contains(err.Error(), "menu_activation cannot be empty") {
-		t.Errorf("Expected error message about empty menu_activation, got: %v", err)
+	if !strings.Contains(err.Error(), "menu_mode.activation cannot be empty") {
+		t.Errorf("Expected error message about empty menu_mode.activation, got: %v", err)
 	}
 }
 
@@ -177,9 +188,14 @@ func TestSettingsManager_FileReadError(t *testing.T) {
 		t.Fatalf("Expected no error when file doesn't exist, got: %v", err)
 	}
 	
-	// Should use default settings
-	if manager.settings.Bindings.MenuActivation != "x" {
-		t.Errorf("Expected default menu_activation 'x', got: %q", manager.settings.Bindings.MenuActivation)
+	// Should use new default settings (legacy field should be empty)
+	if manager.settings.Bindings.MenuActivation != "" {
+		t.Errorf("Expected default menu_activation to be empty (new mode), got: %q", manager.settings.Bindings.MenuActivation)
+	}
+	
+	// Check new mode default
+	if manager.settings.Bindings.MenuMode.Activation != "alt+m" {
+		t.Errorf("Expected default menu_mode.activation 'alt+m', got: %q", manager.settings.Bindings.MenuMode.Activation)
 	}
 }
 

@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"fmt"
+	"log"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"coding-prompts-tui/internal/config"
 	"coding-prompts-tui/internal/persona"
@@ -41,6 +45,9 @@ type App struct {
 	settingsManager *config.SettingsManager
 	personaManager  *persona.Manager
 	workspace       *config.WorkspaceState
+	debugMode       bool
+	lastDebugInfo   string
+	debugLogger     *log.Logger
 }
 
 // NewApp creates a new application instance
@@ -58,6 +65,9 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	personaDialog.SetAvailablePersonas(personaManager.GetAvailablePersonas())
 	personaDialog.SetActivePersonas(workspace.ActivePersonas)
 
+	// Initialize debug logger
+	debugLogger := initializeDebugLogger(targetDir)
+
 	app := &App{
 		targetDir:       targetDir,
 		focused:         FileTreePanel,
@@ -71,6 +81,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		settingsManager: settingsManager,
 		personaManager:  personaManager,
 		workspace:       workspace,
+		debugLogger:     debugLogger,
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
 	return app
@@ -194,7 +205,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value(), a.workspace.ActivePersonas)
 				if err != nil {
 					// Show error notification
-					alertCmd := a.alertModel.NewAlertCmd(bubbleup.ErrorKey, "error building prompt")
+					alertCmd := a.createAlert(bubbleup.ErrorKey, "error building prompt")
 					return a, alertCmd
 				}
 				promptToCopy = generatedPrompt
@@ -203,12 +214,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			err := clipboard.WriteAll(promptToCopy)
 			if err != nil {
 				// Show error notification
-				alertCmd := a.alertModel.NewAlertCmd(bubbleup.ErrorKey, "clipboard error")
+				alertCmd := a.createAlert(bubbleup.ErrorKey, "clipboard error")
 				return a, alertCmd
 			}
 
 			// Show success notification
-			alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "prompt copied")
+			alertCmd := a.createAlert(bubbleup.InfoKey, "prompt copied")
 			return a, alertCmd
 		}
 
@@ -226,10 +237,45 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
-		// TODO: change these to pull from the settingsManager
+		// Handle menu activation first (supports both legacy and new modes)
+		if a.handleMenuActivation(msg) {
+			alertCmd := a.createAlert(bubbleup.InfoKey, "menu mode activated")
+			return a, alertCmd
+		}
+
+		// Debug mode: show key information (after menu handling so we can see if activation works)
+		if a.debugMode {
+			debugInfo := fmt.Sprintf("Key: %q, Type: %v, Alt: %v, Runes: %v", msg.String(), msg.Type, msg.Alt, msg.Runes)
+			if a.lastDebugInfo != "" {
+				debugInfo = a.lastDebugInfo + " | " + debugInfo
+				a.lastDebugInfo = ""
+			}
+			
+			// Log to file
+			if a.debugLogger != nil {
+				a.debugLogger.Printf("DEBUG: %s", debugInfo)
+			}
+			
+			// Also show as notification in TUI (but don't return immediately - let other handlers run)
+			alertCmd := a.createAlert(bubbleup.InfoKey, debugInfo)
+			cmds = append(cmds, alertCmd)
+		}
+
+		// Handle other key commands
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return a, tea.Quit
+		case "f11":
+			// Toggle debug mode
+			a.debugMode = !a.debugMode
+			var message string
+			if a.debugMode {
+				message = "Debug mode ON - keys will be shown"
+			} else {
+				message = "Debug mode OFF"
+			}
+			alertCmd := a.createAlert(bubbleup.InfoKey, message)
+			return a, alertCmd
 		case "tab":
 			a.nextPanel()
 			return a, nil
@@ -237,24 +283,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.prevPanel()
 			return a, nil
 		case "escape":
-			// If in menu binding mode, exit to chat panel
+			// If in menu binding mode, exit to normal mode
 			if a.menuBindingMode {
-				a.focused = ChatPanel
-				a.menuBindingMode = false
+				a.exitMenuMode()
 				return a, nil
 			}
-		case a.settingsManager.GetMenuActivationKey():
-			// Only activate menu when in menu binding mode
-			if a.menuBindingMode {
-				// Activate menu - show notification
-				alertCmd := a.alertModel.NewAlertCmd(bubbleup.InfoKey, "menu activated")
-				return a, alertCmd
-			}
-		case a.settingsManager.GetPersonaMenuKey():
-			// Show persona selection dialog
-			a.personaDialog.SetActivePersonas(a.workspace.ActivePersonas)
-			a.personaDialog.Show()
-			return a, nil
 		case "ctrl+s":
 			generatedPrompt, err := prompt.Build(a.targetDir, a.fileTree.selected, a.chat.textarea.Value(), a.workspace.ActivePersonas)
 			if err != nil {
@@ -265,6 +298,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.promptDialog.Show(generatedPrompt)
 			}
 			return a, nil
+		}
+
+		// Handle menu-specific commands (only active in menu binding mode)
+		if a.menuBindingMode {
+			switch msg.String() {
+			case a.settingsManager.GetPersonaMenuKey():
+				// Show persona selection dialog
+				a.personaDialog.SetActivePersonas(a.workspace.ActivePersonas)
+				a.personaDialog.Show()
+				return a, nil
+			}
 		}
 	}
 
@@ -417,13 +461,44 @@ func (a *App) mainLayout() string {
 		footerStyle = footerStyle.BorderForeground(lipgloss.Color("240"))
 	}
 
-	footerContent := "menu (" + a.settingsManager.GetMenuActivationKey() + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")"
+	// Display appropriate menu activation key based on mode
+	var menuActivationDisplay string
+	if a.settingsManager.IsLegacyMode() {
+		menuActivationDisplay = a.settingsManager.GetMenuActivationKey()
+	} else {
+		menuActivationDisplay = a.settingsManager.GetMenuModeActivation()
+	}
+	
+	var debugInfo string
+	if a.debugMode {
+		debugInfo = " • F11: debug OFF"
+	} else {
+		debugInfo = " • F11: debug"
+	}
+	
+	footerContent := "menu (" + menuActivationDisplay + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")" + debugInfo
 	footer := footerStyle.Render(footerContent)
 
 	// Layout the panels
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, fileTreePanel, selectedPanel)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, topRow, chatPanel, footer)
+}
+
+// createAlert creates an alert command with configured TTL
+func (a *App) createAlert(alertType string, message string) tea.Cmd {
+	// TODO: The bubbleup library doesn't currently support configurable TTL
+	// For now, we just create the standard alert. The TTL configuration is ready
+	// for when we either:
+	// 1. Find a way to configure TTL in bubbleup
+	// 2. Switch to a different notification library
+	// 3. Create a custom notification system
+	
+	// Get the configured TTL (currently unused but ready)
+	ttlSeconds := a.settingsManager.GetNotificationTTL()
+	_ = ttlSeconds // Silence unused variable warning
+	
+	return a.alertModel.NewAlertCmd(alertType, message)
 }
 
 // nextPanel moves focus to the next panel
@@ -441,8 +516,10 @@ func (a *App) nextPanel() {
 		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
 	}
-	// Update menu binding mode based on footer focus
-	a.menuBindingMode = (a.focused == FooterMenuPanel)
+	// Update menu binding mode based on footer focus (legacy mode only)
+	if a.settingsManager.IsLegacyMode() {
+		a.menuBindingMode = (a.focused == FooterMenuPanel)
+	}
 }
 
 // prevPanel moves focus to the previous panel
@@ -460,8 +537,10 @@ func (a *App) prevPanel() {
 		// Reset to FileTreePanel if focus state is invalid
 		a.focused = FileTreePanel
 	}
-	// Update menu binding mode based on footer focus
-	a.menuBindingMode = (a.focused == FooterMenuPanel)
+	// Update menu binding mode based on footer focus (legacy mode only)
+	if a.settingsManager.IsLegacyMode() {
+		a.menuBindingMode = (a.focused == FooterMenuPanel)
+	}
 }
 
 // handleMouseClick determines which panel was clicked and sets focus accordingly
@@ -495,8 +574,10 @@ func (a *App) handleMouseClick(x, y int) {
 		// Click is in the footer area
 		a.focused = FooterMenuPanel
 	}
-	// Update menu binding mode based on footer focus
-	a.menuBindingMode = (a.focused == FooterMenuPanel)
+	// Update menu binding mode based on footer focus (legacy mode only)
+	if a.settingsManager.IsLegacyMode() {
+		a.menuBindingMode = (a.focused == FooterMenuPanel)
+	}
 }
 
 // updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
@@ -517,4 +598,87 @@ func (a *App) updateSelectedFilesFromSelection(selectedFiles map[string]bool) {
 	} else if a.selectedFiles.cursor >= len(a.selectedFiles.files) {
 		a.selectedFiles.cursor = len(a.selectedFiles.files) - 1
 	}
+}
+
+// handleMenuActivation checks if the given key message should activate menu mode
+// Returns true if menu mode was activated, false otherwise
+func (a *App) handleMenuActivation(msg tea.KeyMsg) bool {
+	// Debug: Always show what we're checking for
+	if a.debugMode {
+		legacyMode := a.settingsManager.IsLegacyMode()
+		activationKey := a.settingsManager.GetMenuModeActivation()
+		debugMsg := fmt.Sprintf("Menu check: Legacy=%v, Expected=%q, Got=%q", legacyMode, activationKey, msg.String())
+		// Store debug info to show later since we can't return alert here
+		a.lastDebugInfo = debugMsg
+	}
+
+	// Check for legacy mode (focus-based activation)
+	if a.settingsManager.IsLegacyMode() {
+		// Legacy mode: menu binding only works when footer has focus
+		if a.focused == FooterMenuPanel && msg.String() == a.settingsManager.GetMenuActivationKey() {
+			// In legacy mode, this just shows a notification since menu is already "active"
+			return true
+		}
+		return false
+	}
+
+	// New mode: check for modifier-based activation
+	activationKey := a.settingsManager.GetMenuModeActivation()
+	if activationKey == "" {
+		return false
+	}
+
+	keyCombination, err := config.ParseKeyBinding(activationKey)
+	if err != nil {
+		// Invalid key combination, ignore
+		return false
+	}
+
+	if keyCombination.MatchesKeyMsg(msg) {
+		a.enterMenuMode()
+		return true
+	}
+
+	return false
+}
+
+// enterMenuMode activates menu binding mode
+func (a *App) enterMenuMode() {
+	a.menuBindingMode = true
+	// Optionally focus the footer to provide visual feedback
+	a.focused = FooterMenuPanel
+}
+
+// exitMenuMode deactivates menu binding mode  
+func (a *App) exitMenuMode() {
+	a.menuBindingMode = false
+	// Return to chat panel for continued typing
+	a.focused = ChatPanel
+}
+
+// initializeDebugLogger creates and configures a debug logger that writes to logs/error.log
+func initializeDebugLogger(targetDir string) *log.Logger {
+	logDir := filepath.Join(targetDir, "logs")
+	logFile := filepath.Join(logDir, "error.log")
+	
+	// Create logs directory if it doesn't exist
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		// If we can't create the logs directory, return nil logger
+		return nil
+	}
+	
+	// Open log file in append mode, create if it doesn't exist
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		// If we can't open the log file, return nil logger
+		return nil
+	}
+	
+	// Create logger with timestamp prefix
+	logger := log.New(file, "", log.LstdFlags)
+	
+	// Log initialization message
+	logger.Printf("=== Debug session started at %s ===", time.Now().Format("2006-01-02 15:04:05"))
+	
+	return logger
 }

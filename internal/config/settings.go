@@ -17,13 +17,36 @@ const (
 
 // UserSettings represents user-configurable settings loaded from TOML
 type UserSettings struct {
-	Bindings KeyBindings `toml:"bindings"`
+	Bindings KeyBindings     `toml:"bindings"`
+	UI       UserUISettings  `toml:"ui"`
 }
 
 // KeyBindings contains all key binding configurations
 type KeyBindings struct {
-	MenuActivation string `toml:"menu_activation"`
-	PersonaMenu    string `toml:"persona_menu"`
+	// Global bindings (always active)
+	EscapeToNormal string `toml:"escape_to_normal"`
+	
+	// Mode-specific bindings
+	MenuMode   ModeBindings `toml:"menu_mode"`
+	NormalMode ModeBindings `toml:"normal_mode"`
+	
+	// Deprecated: Legacy single-character bindings for backward compatibility
+	MenuActivation string `toml:"menu_activation,omitempty"`
+	PersonaMenu    string `toml:"persona_menu,omitempty"`
+}
+
+// ModeBindings represents key bindings for a specific interaction mode
+type ModeBindings struct {
+	Activation  string `toml:"activation,omitempty"`
+	Exit        string `toml:"exit,omitempty"`
+	PersonaMenu string `toml:"persona_menu,omitempty"`
+	Tab         string `toml:"tab,omitempty"`
+	ShiftTab    string `toml:"shift_tab,omitempty"`
+}
+
+// UserUISettings represents user interface configuration options from TOML
+type UserUISettings struct {
+	NotificationTTL int `toml:"notification_ttl"`
 }
 
 // SettingsManager handles loading and validation of user settings from TOML
@@ -93,24 +116,74 @@ func (m *SettingsManager) loadUnsafe() error {
 
 // validate performs validation on the loaded settings
 func (m *SettingsManager) validate(settings *UserSettings) error {
-	// Validate menu activation key binding
+	// Check for backward compatibility mode (legacy single-character bindings)
+	if settings.Bindings.MenuActivation != "" || settings.Bindings.PersonaMenu != "" {
+		return m.validateLegacyBindings(settings)
+	}
+	
+	// Validate new mode-based bindings
+	return m.validateModeBindings(settings)
+}
+
+// validateLegacyBindings validates the old single-character binding format
+func (m *SettingsManager) validateLegacyBindings(settings *UserSettings) error {
 	if settings.Bindings.MenuActivation == "" {
 		return fmt.Errorf("bindings.menu_activation cannot be empty")
 	}
 	
-	// Check if it's a valid single character
 	if len(settings.Bindings.MenuActivation) != 1 {
 		return fmt.Errorf("bindings.menu_activation must be a single character, got: %q", settings.Bindings.MenuActivation)
 	}
 	
-	// Validate persona menu key binding
 	if settings.Bindings.PersonaMenu == "" {
 		return fmt.Errorf("bindings.persona_menu cannot be empty")
 	}
 	
-	// Check if it's a valid single character
 	if len(settings.Bindings.PersonaMenu) != 1 {
 		return fmt.Errorf("bindings.persona_menu must be a single character, got: %q", settings.Bindings.PersonaMenu)
+	}
+	
+	return nil
+}
+
+// validateModeBindings validates the new mode-based binding format
+func (m *SettingsManager) validateModeBindings(settings *UserSettings) error {
+	// Validate menu mode activation key
+	if settings.Bindings.MenuMode.Activation == "" {
+		return fmt.Errorf("bindings.menu_mode.activation cannot be empty")
+	}
+	
+	if err := validateKeyBinding(settings.Bindings.MenuMode.Activation); err != nil {
+		return fmt.Errorf("invalid bindings.menu_mode.activation: %w", err)
+	}
+	
+	// Validate menu mode exit key
+	if settings.Bindings.MenuMode.Exit != "" {
+		if err := validateKeyBinding(settings.Bindings.MenuMode.Exit); err != nil {
+			return fmt.Errorf("invalid bindings.menu_mode.exit: %w", err)
+		}
+	}
+	
+	// Validate persona menu key (if specified)
+	if settings.Bindings.MenuMode.PersonaMenu != "" {
+		if err := validateKeyBinding(settings.Bindings.MenuMode.PersonaMenu); err != nil {
+			return fmt.Errorf("invalid bindings.menu_mode.persona_menu: %w", err)
+		}
+	}
+	
+	return nil
+}
+
+// validateKeyBinding validates a key binding string (supports modifier combinations)
+func validateKeyBinding(binding string) error {
+	if binding == "" {
+		return fmt.Errorf("key binding cannot be empty")
+	}
+	
+	// Parse the key binding to validate its format
+	_, err := ParseKeyBinding(binding)
+	if err != nil {
+		return fmt.Errorf("invalid key binding format: %w", err)
 	}
 	
 	return nil
@@ -126,17 +199,71 @@ func (m *SettingsManager) GetSettings() *UserSettings {
 }
 
 // GetMenuActivationKey returns the menu activation key binding (thread-safe)
+// For backward compatibility, returns legacy binding if present, otherwise new mode-based binding
 func (m *SettingsManager) GetMenuActivationKey() string {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	return m.settings.Bindings.MenuActivation
+	
+	// Check for legacy binding first
+	if m.settings.Bindings.MenuActivation != "" {
+		return m.settings.Bindings.MenuActivation
+	}
+	
+	// Return new mode-based activation key
+	return m.settings.Bindings.MenuMode.Activation
 }
 
 // GetPersonaMenuKey returns the persona menu key binding (thread-safe)
+// For backward compatibility, returns legacy binding if present, otherwise new mode-based binding
 func (m *SettingsManager) GetPersonaMenuKey() string {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	return m.settings.Bindings.PersonaMenu
+	
+	// Check for legacy binding first
+	if m.settings.Bindings.PersonaMenu != "" {
+		return m.settings.Bindings.PersonaMenu
+	}
+	
+	// Return new mode-based persona menu key
+	return m.settings.Bindings.MenuMode.PersonaMenu
+}
+
+// GetMenuModeActivation returns the menu mode activation key (thread-safe)
+func (m *SettingsManager) GetMenuModeActivation() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.MenuMode.Activation
+}
+
+// GetMenuModeExit returns the menu mode exit key (thread-safe)
+func (m *SettingsManager) GetMenuModeExit() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.MenuMode.Exit
+}
+
+// GetMenuModePersonaMenu returns the persona menu key for menu mode (thread-safe)
+func (m *SettingsManager) GetMenuModePersonaMenu() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.MenuMode.PersonaMenu
+}
+
+// IsLegacyMode returns true if using legacy single-character bindings
+func (m *SettingsManager) IsLegacyMode() bool {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.MenuActivation != "" || m.settings.Bindings.PersonaMenu != ""
+}
+
+// GetNotificationTTL returns the notification time-to-live in seconds
+func (m *SettingsManager) GetNotificationTTL() int {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	if m.settings.UI.NotificationTTL <= 0 {
+		return 3 // Default 3 seconds
+	}
+	return m.settings.UI.NotificationTTL
 }
 
 // Reload reloads the configuration from disk
@@ -243,20 +370,67 @@ func (m *SettingsManager) reloadAndNotify() error {
 	}
 	
 	// Call onChange callback if settings actually changed
-	if onChange != nil && (oldSettings.Bindings.MenuActivation != newSettings.Bindings.MenuActivation ||
-		oldSettings.Bindings.PersonaMenu != newSettings.Bindings.PersonaMenu) {
+	if onChange != nil && (m.hasBindingsChanged(&oldSettings.Bindings, &newSettings.Bindings) || 
+		m.hasUIChanged(&oldSettings.UI, &newSettings.UI)) {
 		onChange(newSettings)
 	}
 	
 	return nil
 }
 
+// hasBindingsChanged checks if any key bindings have changed
+func (m *SettingsManager) hasBindingsChanged(old, new *KeyBindings) bool {
+	// Check legacy bindings
+	if old.MenuActivation != new.MenuActivation || old.PersonaMenu != new.PersonaMenu {
+		return true
+	}
+	
+	// Check global bindings
+	if old.EscapeToNormal != new.EscapeToNormal {
+		return true
+	}
+	
+	// Check menu mode bindings
+	if old.MenuMode.Activation != new.MenuMode.Activation ||
+		old.MenuMode.Exit != new.MenuMode.Exit ||
+		old.MenuMode.PersonaMenu != new.MenuMode.PersonaMenu {
+		return true
+	}
+	
+	// Check normal mode bindings
+	if old.NormalMode.Tab != new.NormalMode.Tab ||
+		old.NormalMode.ShiftTab != new.NormalMode.ShiftTab {
+		return true
+	}
+	
+	return false
+}
+
+// hasUIChanged checks if any UI settings have changed
+func (m *SettingsManager) hasUIChanged(old, new *UserUISettings) bool {
+	return old.NotificationTTL != new.NotificationTTL
+}
+
 // getDefaultSettings returns the default settings
 func getDefaultSettings() *UserSettings {
 	return &UserSettings{
 		Bindings: KeyBindings{
-			MenuActivation: "x",
-			PersonaMenu:    "p",
+			EscapeToNormal: "esc",
+			MenuMode: ModeBindings{
+				Activation:  "alt+m",
+				Exit:        "esc",
+				PersonaMenu: "p",
+			},
+			NormalMode: ModeBindings{
+				Tab:      "tab",
+				ShiftTab: "shift+tab",
+			},
+			// Legacy defaults for backward compatibility
+			MenuActivation: "",
+			PersonaMenu:    "",
+		},
+		UI: UserUISettings{
+			NotificationTTL: 3, // Default 3 seconds
 		},
 	}
 }

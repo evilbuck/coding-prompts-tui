@@ -133,10 +133,17 @@ The file selection system in the TUI application manages state across two panels
 - Handle inter-panel communication messages
 - Maintain overall application state
 - **Orchestrate state persistence**
+- **Manage debug logging system**
+
+**Key State:**
+- `debugMode bool` - Tracks whether debug mode is active
+- `debugLogger *log.Logger` - File logger for persistent debug output
+- `lastDebugInfo string` - Stores debug information for display coordination
 
 **Key Methods:**
 - `updateSelectedFilesFromSelection(selectedFiles)` - Syncs SelectedFilesModel with FileTreeModel selection
 - Message handling for `FileSelectionMsg`, `FileDeselectionMsg`, and `ChatInputMsg`
+- `initializeDebugLogger(targetDir)` - Sets up file-based debug logging system
 
 ## Application State Persistence
 
@@ -151,6 +158,56 @@ A new `internal/config` package manages saving and loading the application's sta
 ### Storage
 
 - The configuration is stored in a JSON file located at `~/.config/prompter/config.json`. This provides a simple, human-readable, and dependency-free persistence mechanism.
+
+## Debug Logging System
+
+The application includes a comprehensive debug logging system to help troubleshoot key binding issues and monitor application behavior.
+
+### Components
+
+- **File-Based Logging**: Debug information is written to `logs/error.log` in the project directory
+- **In-App Notifications**: Debug messages are also displayed as TUI notifications for immediate feedback
+- **Session Tracking**: Each debug session is clearly marked with timestamps and initialization messages
+
+### Debug Logger Initialization
+
+The `initializeDebugLogger()` function in `internal/tui/app.go` sets up the logging system:
+
+1. **Directory Creation**: Automatically creates the `logs/` directory if it doesn't exist
+2. **File Handling**: Opens `logs/error.log` in append mode, creating it if necessary
+3. **Logger Configuration**: Sets up a standard Go logger with timestamps
+4. **Session Markers**: Writes initialization messages to mark new debug sessions
+5. **Error Handling**: Gracefully handles setup failures by returning `nil` logger
+
+### Debug Mode Features
+
+**Activation**: Press `F11` to toggle debug mode on/off
+
+**Key Event Logging**: When debug mode is active, all key events are logged with:
+- Key string representation
+- Key event type
+- Alt modifier status  
+- Rune values
+- Menu activation analysis (legacy vs. new mode detection)
+
+**Dual Output**: Debug information is written to both:
+- **File**: `logs/error.log` for persistent access and analysis
+- **TUI**: Temporary notifications for immediate feedback
+
+### Log File Format
+
+```
+2025/09/11 21:55:00 === Debug session started at 2025-09-11 21:55:00 ===
+2025/09/11 21:55:15 DEBUG: Menu check: Legacy=false, Expected="alt+m", Got="alt+m" | Key: "alt+m", Type: 1, Alt: true, Runes: [109]
+2025/09/11 21:55:20 DEBUG: Key: "f11", Type: 1, Alt: false, Runes: []
+```
+
+### Error Handling and Reliability
+
+- **Graceful Degradation**: Application continues to function even if logging setup fails
+- **Nil Logger Protection**: Debug logging is skipped if logger initialization fails
+- **File Permissions**: Uses standard file permissions (0755 for directory, 0644 for log file)
+- **Append Mode**: Preserves historical debug information across application restarts
 
 ## State Flow
 
@@ -257,6 +314,22 @@ FileTreeModel                    App                    SelectedFilesModel
        |                         |                            |
 ```
 
+**Debug Logging Flow Diagram**
+```
+   User Input                   App Model                  Debug Logger
+      |                           |                            |
+      |--- [F11 pressed] ------->  |                            |
+      |                           | debugMode = !debugMode     |
+      |                           |                            |
+      |--- [Any key] ----------->  |                            |
+      |                           | (if debugMode active)      |
+      |                           |                            |
+      |                           |--- debugLogger.Printf ---->| (Writes to logs/error.log)
+      |                           |                            |
+      |                           |--- createAlert ----------->| (Shows TUI notification)
+      |                           |                            |
+```
+
 ## Key Design Decisions
 
 ### Single Source of Truth
@@ -277,12 +350,17 @@ Selection state is kept in sync between panels through a message-passing system 
 ### Simple, Embedded Persistence
 State is saved to a simple JSON file in the user's config directory. This avoids external dependencies like databases and keeps the application self-contained and easy to manage.
 
+### Debug Logging Integration
+Debug information is logged to files in the project directory rather than stdout/stderr, providing persistent access to troubleshooting information without interfering with terminal output.
+
 ## Performance Considerations
 
 - **Lazy Loading**: Directories are only scanned when expanded
 - **Efficient Updates**: Only changed parts of the tree are rebuilt
 - **Message Batching**: Bubble Tea naturally batches updates for smooth rendering
 - **Path-Based Lookups**: Using maps for O(1) selection and expansion state lookups
+- **Debug Logging**: File-based logging with minimal performance impact when debug mode is disabled
+- **Graceful Logger Failure**: Application continues normally even if debug logging setup fails
 
 
 ## Data Flow Diagram
@@ -320,10 +398,3 @@ The file tree is built lazily - directories are only scanned when expanded, impr
 
 ### State Synchronization
 Selection state is kept in sync between panels through a message-passing system that ensures both views reflect the same underlying state.
-
-## Performance Considerations
-
-- **Lazy Loading**: Directories are only scanned when expanded
-- **Efficient Updates**: Only changed parts of the tree are rebuilt
-- **Message Batching**: Bubble Tea naturally batches updates for smooth rendering
-- **Path-Based Lookups**: Using maps for O(1) selection and expansion state lookups

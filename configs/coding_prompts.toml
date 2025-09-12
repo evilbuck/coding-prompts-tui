@@ -3,7 +3,29 @@
 # Copy this to ~/.config/coding-prompts/coding_prompts.toml and modify as needed
 
 [bindings]
-# Key binding for menu activation
-menu_activation = "x"
-# Key binding for persona selection dialog
+# Global bindings (always active)
+escape_to_normal = "esc"
+
+[bindings.menu_mode]
+# Key combination to enter menu mode (prevents interference with typing)
+# Using alt+m (Alt modifier is widely supported and safe)
+# Alternative options:
+# - "ctrl+space" (ctrl+space is often available)
+# - "f12" (function key, but may not work in all terminal environments)
+# Avoid: "ctrl+m" (equivalent to Enter in many terminals)
+activation = "alt+m"
+# Exit menu mode back to normal mode
+exit = "esc" 
+# Key binding for persona selection dialog (only active in menu mode)
 persona_menu = "p"
+
+[bindings.normal_mode]
+# Standard navigation bindings (active in normal mode)
+tab = "tab"
+shift_tab = "shift+tab"
+
+[ui]
+# Notification settings
+# Duration in seconds that notifications stay visible (default: 3)
+# Useful for debug mode - set higher value to read debug info easily
+notification_ttl = 5
