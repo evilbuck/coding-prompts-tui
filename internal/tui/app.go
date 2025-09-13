@@ -544,23 +544,23 @@ func (a *App) handleMouseClick(x, y int) tea.Cmd {
 
 	// Check if click is in the header area
 	if y < headerHeight {
-		// Header clicked - could add header focus support in the future
-		return nil
+		// Check if click is on the persona area in the header
+		return a.handleHeaderClick(x, y)
 	}
 
 	var targetFocus FocusedPanel
-	// Check if click is in the top panel area (file tree or selected files panels)
+	// Check if click is in the top panel area (file tree or chat panels)
 	if y < headerHeight+topHeight {
 		// Check if click is in the left half (file tree panel)
 		if x < leftWidth {
 			targetFocus = FileTreePanel
 		} else {
-			// Click is in the right half (selected files panel)
-			targetFocus = SelectedFilesPanel
+			// Click is in the right half (chat panel)
+			targetFocus = ChatPanel
 		}
 	} else if y < headerHeight+topHeight+bottomHeight {
-		// Click is in the chat area
-		targetFocus = ChatPanel
+		// Click is in the selected files area (bottom panel)
+		targetFocus = SelectedFilesPanel
 	} else if y < headerHeight+topHeight+bottomHeight+footerHeight {
 		// Click is in the footer area
 		targetFocus = FooterMenuPanel
@@ -570,6 +570,40 @@ func (a *App) handleMouseClick(x, y int) tea.Cmd {
 	}
 
 	return a.setFocus(targetFocus)
+}
+
+// handleHeaderClick determines if the click is on the persona area and handles it
+func (a *App) handleHeaderClick(x, y int) tea.Cmd {
+	// Get active personas, default to "default" if none set
+	activePersonas := a.workspace.ActivePersonas
+	if len(activePersonas) == 0 {
+		activePersonas = []string{"default"}
+	}
+
+	// Build the header content to calculate clickable area
+	var headerContent string
+	if len(activePersonas) == 1 {
+		headerContent = "Persona: " + activePersonas[0]
+	} else {
+		headerContent = "Personas: " + strings.Join(activePersonas, ", ")
+	}
+
+	// Calculate the clickable area for persona text
+	// Header has padding of 2 on each side, so content starts at x=2
+	headerPadding := 2
+	personaStartX := headerPadding
+	personaEndX := headerPadding + len(headerContent)
+
+	// Check if click is within the persona text area
+	if x >= personaStartX && x <= personaEndX && y == 1 { // y=1 is the text line in the header
+		// Click is on persona text - show persona dialog
+		a.personaDialog.SetActivePersonas(a.workspace.ActivePersonas)
+		a.personaDialog.Show()
+		return nil
+	}
+
+	// Click was in header but not on persona text
+	return nil
 }
 
 // updateSelectedFilesFromSelection synchronizes the selected files panel with file tree selection
