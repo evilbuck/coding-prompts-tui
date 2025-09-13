@@ -67,6 +67,7 @@ type App struct {
 	lastDebugInfo   string
 	debugLogger     *log.Logger
 	layoutConfig    *LayoutConfig
+	mode 						string
 }
 
 // NewApp creates a new application instance
@@ -79,13 +80,14 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	personaManager := persona.NewManager(targetDir)
 	personaManager.DiscoverPersonas()
 
+	// Initialize debug logger
+	debugLogger := initializeDebugLogger(targetDir, settingsManager)
+
 	// Initialize persona dialog
 	personaDialog := NewPersonaDialogModel()
 	personaDialog.SetAvailablePersonas(personaManager.GetAvailablePersonas())
 	personaDialog.SetActivePersonas(workspace.ActivePersonas)
-
-	// Initialize debug logger
-	debugLogger := initializeDebugLogger(targetDir, settingsManager)
+	personaDialog.SetDebugLogger(debugLogger)
 
 	app := &App{
 		targetDir:       targetDir,
@@ -103,8 +105,10 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		debugMode:       settingsManager.IsDebugEnabled(), // Set from config
 		debugLogger:     debugLogger,
 		layoutConfig:    NewLayoutConfig(),
+		mode:						 "normal",
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
+
 	return app
 }
 
@@ -227,8 +231,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle persona dialog input if visible
 		if a.personaDialog.IsVisible() {
+			if a.debugLogger != nil {
+				a.debugLogger.Printf("APP: Persona dialog is visible, forwarding key: %q", msg.String())
+			}
 			model, cmd := a.personaDialog.Update(msg)
 			a.personaDialog = model
+			if a.debugLogger != nil {
+				a.debugLogger.Printf("APP: After persona dialog update, visible: %v", a.personaDialog.IsVisible())
+			}
 			return a, cmd
 		}
 
@@ -638,6 +648,7 @@ func (a *App) handleMenuActivation(msg tea.KeyMsg) tea.Cmd {
 		a.lastDebugInfo = debugMsg
 	}
 
+	// TODO: remove checks for legacy mode. There aren't legacy installs.
 	// Check for legacy mode (focus-based activation)
 	if a.settingsManager.IsLegacyMode() {
 		// Legacy mode: menu binding only works when footer has focus

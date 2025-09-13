@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +17,7 @@ type PersonaDialogModel struct {
 	cursor            int
 	width             int
 	height            int
+	debugLogger       *log.Logger
 }
 
 // PersonaSelectionMsg is sent when personas are selected/deselected
@@ -29,6 +31,7 @@ func NewPersonaDialogModel() *PersonaDialogModel {
 		visible:          false,
 		selectedPersonas: make(map[string]bool),
 		cursor:           0,
+		debugLogger:      nil,
 	}
 }
 
@@ -72,6 +75,11 @@ func (m *PersonaDialogModel) SetSize(width, height int) {
 	m.height = height
 }
 
+// SetDebugLogger sets the debug logger for the dialog
+func (m *PersonaDialogModel) SetDebugLogger(logger *log.Logger) {
+	m.debugLogger = logger
+}
+
 // Init initializes the dialog
 func (m *PersonaDialogModel) Init() tea.Cmd {
 	return nil
@@ -85,6 +93,10 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Debug logging for all key presses in persona dialog
+		if m.debugLogger != nil {
+			m.debugLogger.Printf("PERSONA_DIALOG: Key pressed: %q", msg.String())
+		}
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
@@ -111,8 +123,13 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 				return PersonaSelectionMsg{ActivePersonas: activePersonas}
 			}
 		case "escape":
+			// Debug logging for escape key
+			if m.debugLogger != nil {
+				m.debugLogger.Printf("PERSONA_DIALOG: Escape key pressed - hiding dialog")
+			}
 			// Cancel and close dialog without applying changes
 			m.Hide()
+			return m, nil
 		}
 	}
 
