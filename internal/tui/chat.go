@@ -17,6 +17,8 @@ type ChatInputMsg struct {
 type ChatModel struct {
 	title    string
 	textarea textarea.Model
+	width    int
+	height   int
 }
 
 // NewChatModel creates a new chat model
@@ -29,6 +31,8 @@ func NewChatModel(initialValue string) *ChatModel {
 	return &ChatModel{
 		title:    "💬 User Prompt",
 		textarea: ta,
+		width:    0,
+		height:   0,
 	}
 }
 
@@ -93,4 +97,21 @@ func (m *ChatModel) Focus() tea.Cmd {
 // Blur removes focus from the textarea
 func (m *ChatModel) Blur() {
 	m.textarea.Blur()
+}
+
+// SetSize updates the chat model dimensions and resizes the textarea
+func (m *ChatModel) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+	
+	// Calculate available space for textarea
+	// Account for title (1 line), help text (1 line), and spacing (4 lines total)
+	contentHeight := height - 4
+	if contentHeight < 3 {
+		contentHeight = 3 // Minimum height for usability
+	}
+	
+	// Set textarea dimensions to fill available space
+	m.textarea.SetWidth(width)
+	m.textarea.SetHeight(contentHeight)
 }

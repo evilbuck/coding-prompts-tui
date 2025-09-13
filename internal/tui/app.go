@@ -105,6 +105,11 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		layoutConfig:    NewLayoutConfig(),
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
+	
+	// Initialize chat model with default size (will be updated on first WindowSizeMsg)
+	// Set reasonable defaults for initial display
+	app.chat.SetSize(50, 10)
+	
 	return app
 }
 
@@ -808,14 +813,19 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.alertModel = *bubbleup.NewAlertModel(notificationWidth, true)
 
 			// Propagate calculated panel sizes to sub-models that need them
-			headerHeight := 3 // Single line header with padding
-			footerHeight := 3 // Single line footer with padding
-			availableHeight := a.height - headerHeight - footerHeight
-			topHeight := int(float64(availableHeight) * 0.66)
-			leftWidth := a.width / 2
-			contentWidth := leftWidth - 2 - 2  // border width minus border padding
-			contentHeight := topHeight - 2 - 2 // border height minus border padding
-			a.fileTree.SetSize(contentWidth, contentHeight)
+			topHeight := a.layoutConfig.TopPanelHeight(a.height)
+			leftWidth := a.layoutConfig.LeftPanelWidth(a.width)
+			rightWidth := a.layoutConfig.RightPanelWidth(a.width)
+			
+			// File tree panel (top-left)
+			fileTreeContentWidth := StretchWidth(leftWidth, true)
+			fileTreeContentHeight := StretchHeight(topHeight, true)
+			a.fileTree.SetSize(fileTreeContentWidth, fileTreeContentHeight)
+			
+			// Chat panel (top-right)
+			chatContentWidth := StretchWidth(rightWidth, true)
+			chatContentHeight := StretchHeight(topHeight, true)
+			a.chat.SetSize(chatContentWidth, chatContentHeight)
 
 			// Debug log state changes
 			if a.debugMode && a.debugLogger != nil {
