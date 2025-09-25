@@ -15,6 +15,7 @@ import (
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	lipglossv2 "github.com/charmbracelet/lipgloss/v2"
 	"go.dalton.dog/bubbleup"
 )
 
@@ -364,16 +365,20 @@ func (a *App) View() string {
 
 	// Show persona dialog if visible (takes priority over prompt dialog)
 	if a.personaDialog.IsVisible() {
-		dialogView := a.personaDialog.View()
-		// Render with alert notifications
-		return a.alertModel.Render(dialogView)
+		// Use the overlay method to show dimmed background with centered dialog
+    overlayView := a.personaDialog.ViewAsSimpleOverlay(mainLayout)
+    // Render with alert notifications
+    return a.alertModel.Render(overlayView)
 	}
 
 	// Show prompt dialog if visible
 	if a.promptDialog.IsVisible() {
 		dialogView := a.promptDialog.View()
+		// Render dialog over the background using Lipgloss v2 Place
+		backgroundStyle := lipglossv2.NewStyle().SetString(mainLayout)
+		overlayView := lipglossv2.Place(a.width, a.height, lipglossv2.Center, lipglossv2.Center, dialogView, lipglossv2.WithWhitespaceStyle(backgroundStyle))
 		// Render with alert notifications
-		return a.alertModel.Render(dialogView)
+		return a.alertModel.Render(overlayView)
 	}
 
 	// Render main layout with alert notifications
