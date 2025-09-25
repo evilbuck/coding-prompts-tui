@@ -288,7 +288,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.nextPanel()
 		case "shift+tab":
 			return a, a.prevPanel()
-		case "escape":
+		case "esc":
 			// If in menu binding mode, exit to normal mode
 			if a.menuBindingMode {
 				return a, a.exitMenuMode()

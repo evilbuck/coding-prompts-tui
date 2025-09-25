@@ -118,7 +118,7 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 			return m, func() tea.Msg {
 				return PersonaSelectionMsg{ActivePersonas: activePersonas}
 			}
-		case "escape":
+		case "esc":
 			if m.debugLogger != nil {
 				m.debugLogger.Printf("PERSONA_DIALOG: Escape key pressed - hiding dialog")
 			}
