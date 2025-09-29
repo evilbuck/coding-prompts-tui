@@ -39,7 +39,7 @@ func TestConfigManagerSaveRestore(t *testing.T) {
 	// Modify workspace data
 	workspace.SelectedFiles = []string{"file1.go", "file2.go"}
 	workspace.ChatInput = "Test prompt content"
-	
+
 	// Save the changes
 	err = manager.Save()
 	if err != nil {
@@ -82,7 +82,7 @@ func TestConfigManagerMultipleWorkspaces(t *testing.T) {
 	manager := &ConfigManager{
 		configPath: filepath.Join(tmpDir, "config.json"),
 	}
-	
+
 	err = manager.load()
 	if err != nil {
 		t.Fatal(err)

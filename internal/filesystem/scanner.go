@@ -51,7 +51,7 @@ func scanDirectoryWithMatcher(currentPath, originalRoot string) (*FileNode, erro
 
 	for _, entry := range entries {
 		childPath := filepath.Join(currentPath, entry.Name())
-		
+
 		// Skip files based on gitignore patterns
 		if matcher.ShouldIgnore(childPath, entry.IsDir()) {
 			continue

@@ -72,7 +72,7 @@ func Build(rootPath string, selectedFiles map[string]bool, userPrompt string, ac
 	if len(activePersonas) == 0 {
 		activePersonas = []string{"default"}
 	}
-	
+
 	for _, persona := range activePersonas {
 		personaPath := filepath.Join(rootPath, "personas", persona+".md")
 		systemPromptContent, err := os.ReadFile(personaPath)

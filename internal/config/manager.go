@@ -66,13 +66,13 @@ func (m *ConfigManager) load() error {
 	if m.config.RecentWorkspaces == nil {
 		m.config.RecentWorkspaces = make(map[string]*WorkspaceState)
 	}
-	
+
 	// Initialize UI settings if not present (backward compatibility)
 	if len(m.config.UISettings.SelectedFilesPanel.RemovalKeys) == 0 {
 		m.config.UISettings.SelectedFilesPanel.RemovalKeys = []string{" ", "delete", "backspace", "x"}
 	}
 	if m.config.UISettings.SelectedFilesPanel.HelpText == "" {
-		m.config.UISettings.SelectedFilesPanel.HelpText = "↑/↓: navigate, %s: remove file"
+		m.config.UISettings.SelectedFilesPanel.HelpText = "↑/↓: navigate, %s: remove file, ctrl+c: clear all"
 		m.config.UISettings.SelectedFilesPanel.ShowHelpText = true
 	}
 
@@ -157,7 +157,7 @@ func newDefaultConfig() *AppConfig {
 			SelectedFilesPanel: SelectedFilesPanelSettings{
 				RemovalKeys:    []string{" ", "delete", "backspace", "x"}, // space, delete, backspace, x
 				ShowHelpText:   true,
-				HelpText:       "↑/↓: navigate, %s: remove file", // %s will be replaced with key list
+				HelpText:       "↑/↓: navigate, %s: remove file, ctrl+c: clear all", // %s will be replaced with key list
 				ConfirmRemoval: false,
 			},
 		},

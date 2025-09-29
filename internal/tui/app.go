@@ -293,7 +293,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle other key commands
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
+			// If selected files panel is focused, clear all files instead of quitting
+			if a.focused == SelectedFilesPanel {
+				return a, a.selectedFiles.ClearAllFiles()
+			}
+			return a, tea.Quit
+		case "q":
 			return a, tea.Quit
 		case "tab":
 			return a, a.nextPanel()
@@ -497,6 +503,11 @@ func (a *App) mainLayout() string {
 	}
 
 	footerContent := "menu (" + menuActivationDisplay + ") • personas (" + a.settingsManager.GetPersonaMenuKey() + ")" + debugInfo
+
+	// Add contextual help for selected files panel
+	if a.focused == SelectedFilesPanel {
+		footerContent += " • ctrl+c: clear file selection"
+	}
 	footer := footerStyle.Render(footerContent)
 
 	// Layout the panels
@@ -878,6 +889,12 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 			contentWidth := leftWidth - 2 - 2  // border width minus border padding
 			contentHeight := topHeight - 2 - 2 // border height minus border padding
 			a.fileTree.SetSize(contentWidth, contentHeight)
+
+			// Set size for chat panel (right side of top row)
+			rightWidth := a.width - leftWidth
+			chatContentWidth := rightWidth - 2 - 2 // border width minus border padding
+			chatContentHeight := topHeight - 2 - 2 // border height minus border padding
+			a.chat.SetSize(chatContentWidth, chatContentHeight)
 
 			// Debug log state changes
 			if a.debugMode && a.debugLogger != nil {

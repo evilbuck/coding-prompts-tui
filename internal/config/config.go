@@ -11,20 +11,20 @@ type AppConfig struct {
 
 // WorkspaceState represents a previously loaded folder and its state
 type WorkspaceState struct {
-	Path           string    `json:"path"`             // Absolute path to workspace
-	LastAccessed   time.Time `json:"last_accessed"`    // When last opened
-	SelectedFiles  []string  `json:"selected_files"`   // Relative paths of selected files
-	ChatInput      string    `json:"chat_input"`       // Saved chat input
-	ActivePersonas []string  `json:"active_personas"`  // Active persona names (defaults to ["default"])
-	
+	Path           string    `json:"path"`            // Absolute path to workspace
+	LastAccessed   time.Time `json:"last_accessed"`   // When last opened
+	SelectedFiles  []string  `json:"selected_files"`  // Relative paths of selected files
+	ChatInput      string    `json:"chat_input"`      // Saved chat input
+	ActivePersonas []string  `json:"active_personas"` // Active persona names (defaults to ["default"])
+
 	// Deprecated: Use ActivePersonas instead
 	CurrentPersona string `json:"current_persona,omitempty"` // Kept for backward compatibility
 }
 
 // ConfigMetadata stores application metadata
 type ConfigMetadata struct {
-	Version      string    `json:"version"`       // Config schema version
-	AppVersion   string    `json:"app_version"`   // App version that created this config
+	Version      string    `json:"version"`     // Config schema version
+	AppVersion   string    `json:"app_version"` // App version that created this config
 	CreatedAt    time.Time `json:"created_at"`
 	LastModified time.Time `json:"last_modified"`
 }

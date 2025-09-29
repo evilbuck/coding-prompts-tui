@@ -11,18 +11,18 @@ import (
 
 // PromptDialogModel represents the scrollable prompt dialog
 type PromptDialogModel struct {
-	viewport   viewport.Model
-	width      int
-	height     int
-	content    string
-	visible    bool
+	viewport viewport.Model
+	width    int
+	height   int
+	content  string
+	visible  bool
 }
 
 // NewPromptDialogModel creates a new prompt dialog model
 func NewPromptDialogModel() *PromptDialogModel {
 	vp := viewport.New(0, 0)
 	vp.KeyMap = viewport.DefaultKeyMap()
-	
+
 	return &PromptDialogModel{
 		viewport: vp,
 		visible:  false,
@@ -33,15 +33,15 @@ func NewPromptDialogModel() *PromptDialogModel {
 func (m *PromptDialogModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	
+
 	// Calculate dialog dimensions (80% of screen)
 	dialogWidth := int(float64(width) * 0.8)
 	dialogHeight := int(float64(height) * 0.8)
-	
+
 	// Calculate viewport dimensions (minus borders and padding)
 	viewportWidth := dialogWidth - 4
 	viewportHeight := dialogHeight - 4
-	
+
 	m.viewport.Width = viewportWidth
 	m.viewport.Height = viewportHeight
 }
@@ -50,11 +50,11 @@ func (m *PromptDialogModel) SetSize(width, height int) {
 func (m *PromptDialogModel) Show(content string) {
 	m.content = content
 	m.visible = true
-	
+
 	// Word wrap content to fit viewport width
 	wrappedContent := lipgloss.NewStyle().Width(m.viewport.Width).Render(content)
 	m.viewport.SetContent(wrappedContent)
-	
+
 	// Reset scroll position to top
 	m.viewport.GotoTop()
 }
@@ -87,7 +87,7 @@ func (m *PromptDialogModel) Update(msg tea.Msg) (*PromptDialogModel, tea.Cmd) {
 			m.Hide()
 			return m, nil
 		}
-		
+
 		// Pass scroll controls to viewport
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -117,20 +117,20 @@ func (m *PromptDialogModel) View() string {
 
 	// Render the scrollable content
 	content := m.viewport.View()
-	
+
 	// Add scroll indicators if content is scrollable
 	if m.viewport.TotalLineCount() > m.viewport.Height {
 		scrollPercent := m.viewport.ScrollPercent()
 		scrollInfo := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Render(fmt.Sprintf("%.0f%%", scrollPercent*100))
-		
+
 		// Add scroll percentage to the bottom right of content
 		contentLines := strings.Split(content, "\n")
 		if len(contentLines) > 0 {
 			lastLineIdx := len(contentLines) - 1
 			lastLine := contentLines[lastLineIdx]
-			
+
 			// Pad the last line and add scroll info
 			padding := m.viewport.Width - lipgloss.Width(lastLine) - lipgloss.Width(scrollInfo)
 			if padding > 0 {

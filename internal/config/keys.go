@@ -28,10 +28,10 @@ func ParseKeyBinding(binding string) (*KeyCombination, error) {
 	}
 
 	combo := &KeyCombination{}
-	
+
 	// The last part is always the key
 	keyPart := parts[len(parts)-1]
-	
+
 	// Process modifiers (all parts except the last one)
 	for i := 0; i < len(parts)-1; i++ {
 		modifier := strings.TrimSpace(parts[i])
@@ -61,54 +61,54 @@ func (kc *KeyCombination) MatchesKeyMsg(msg tea.KeyMsg) bool {
 	// First, try exact string matching for complex combinations
 	expectedStr := kc.String()
 	actualStr := msg.String()
-	
+
 	// Handle common terminal variations of complex key combinations
 	if expectedStr == "ctrl+shift+m" {
 		// Try different ways terminals might encode ctrl+shift+m
 		variations := []string{
 			"ctrl+shift+m",
-			"ctrl+M",        // Some terminals send uppercase
-			"ctrl+alt+m",    // Some terminals map ctrl+shift to ctrl+alt
+			"ctrl+M",     // Some terminals send uppercase
+			"ctrl+alt+m", // Some terminals map ctrl+shift to ctrl+alt
 		}
-		
+
 		for _, variation := range variations {
 			if actualStr == variation {
 				return true
 			}
 		}
-		
+
 		// Check if it's sent as alt+m with special encoding
 		if msg.Alt && len(msg.Runes) > 0 && strings.ToLower(string(msg.Runes[0])) == "m" {
 			return true
 		}
 	}
-	
+
 	// Try exact string match first
 	if actualStr == expectedStr {
 		return true
 	}
-	
+
 	// Fallback to component-wise matching
 	key := strings.ToLower(kc.Key)
-	
+
 	// Handle special keys that don't use runes
-	isSpecialKey := key == "tab" || key == "esc" || key == "escape" || 
-					key == "enter" || key == "space" || key == "backspace" || 
-					key == "delete" || key == "up" || key == "down" || 
-					key == "left" || key == "right" || key == "home" || 
-					key == "end" || strings.HasPrefix(key, "f")
-	
+	isSpecialKey := key == "tab" || key == "esc" || key == "escape" ||
+		key == "enter" || key == "space" || key == "backspace" ||
+		key == "delete" || key == "up" || key == "down" ||
+		key == "left" || key == "right" || key == "home" ||
+		key == "end" || strings.HasPrefix(key, "f")
+
 	if isSpecialKey {
 		// For special keys, check modifiers carefully
 		if kc.Alt != msg.Alt {
 			return false
 		}
-		
+
 		// Check ctrl modifier for special keys
 		if kc.Ctrl && !hasCtrlModifier(msg) {
 			return false
 		}
-		
+
 		if !kc.Ctrl && hasCtrlModifier(msg) {
 			return false
 		}
@@ -117,16 +117,16 @@ func (kc *KeyCombination) MatchesKeyMsg(msg tea.KeyMsg) bool {
 		if kc.Ctrl && !hasCtrlModifier(msg) {
 			return false
 		}
-		
+
 		if !kc.Ctrl && hasCtrlModifier(msg) {
 			return false
 		}
-		
+
 		if kc.Alt != msg.Alt {
 			return false
 		}
 	}
-	
+
 	// Check the key itself
 	return kc.matchesKey(msg)
 }
@@ -134,7 +134,7 @@ func (kc *KeyCombination) MatchesKeyMsg(msg tea.KeyMsg) bool {
 // matchesKey checks if the key part matches
 func (kc *KeyCombination) matchesKey(msg tea.KeyMsg) bool {
 	key := strings.ToLower(kc.Key)
-	
+
 	// Handle special keys
 	switch key {
 	case "esc", "escape":
@@ -166,7 +166,7 @@ func (kc *KeyCombination) matchesKey(msg tea.KeyMsg) bool {
 	case "pgdn", "pagedown":
 		return msg.Type == tea.KeyPgDown
 	}
-	
+
 	// Handle function keys
 	if strings.HasPrefix(key, "f") && len(key) > 1 {
 		switch key {
@@ -196,18 +196,18 @@ func (kc *KeyCombination) matchesKey(msg tea.KeyMsg) bool {
 			return msg.Type == tea.KeyF12
 		}
 	}
-	
+
 	// Handle regular characters
 	if len(key) == 1 {
 		// For single characters, check against the runes
 		if len(msg.Runes) > 0 {
 			return strings.ToLower(string(msg.Runes[0])) == key
 		}
-		
+
 		// Also check against the String representation
 		return strings.ToLower(msg.String()) == key
 	}
-	
+
 	return false
 }
 
@@ -216,33 +216,33 @@ func hasCtrlModifier(msg tea.KeyMsg) bool {
 	// This is a heuristic based on common ctrl key combinations
 	switch msg.Type {
 	case tea.KeyCtrlA, tea.KeyCtrlB, tea.KeyCtrlC, tea.KeyCtrlD, tea.KeyCtrlE,
-		 tea.KeyCtrlF, tea.KeyCtrlG, tea.KeyCtrlH, tea.KeyCtrlI, tea.KeyCtrlJ,
-		 tea.KeyCtrlK, tea.KeyCtrlL, tea.KeyCtrlM, tea.KeyCtrlN, tea.KeyCtrlO,
-		 tea.KeyCtrlP, tea.KeyCtrlQ, tea.KeyCtrlR, tea.KeyCtrlS, tea.KeyCtrlT,
-		 tea.KeyCtrlU, tea.KeyCtrlV, tea.KeyCtrlW, tea.KeyCtrlX, tea.KeyCtrlY,
-		 tea.KeyCtrlZ:
+		tea.KeyCtrlF, tea.KeyCtrlG, tea.KeyCtrlH, tea.KeyCtrlI, tea.KeyCtrlJ,
+		tea.KeyCtrlK, tea.KeyCtrlL, tea.KeyCtrlM, tea.KeyCtrlN, tea.KeyCtrlO,
+		tea.KeyCtrlP, tea.KeyCtrlQ, tea.KeyCtrlR, tea.KeyCtrlS, tea.KeyCtrlT,
+		tea.KeyCtrlU, tea.KeyCtrlV, tea.KeyCtrlW, tea.KeyCtrlX, tea.KeyCtrlY,
+		tea.KeyCtrlZ:
 		return true
 	}
-	
+
 	// Check string representation for more complex combinations
 	msgStr := msg.String()
 	if strings.Contains(msgStr, "ctrl+") {
 		return true
 	}
-	
+
 	// Check for ctrl+shift combinations that might come through differently
 	if msg.Alt && len(msg.Runes) > 0 {
 		// In some terminals, ctrl+shift+key combinations come through as alt+key
 		return true
 	}
-	
+
 	return false
 }
 
 // String returns a string representation of the key combination
 func (kc *KeyCombination) String() string {
 	parts := []string{}
-	
+
 	if kc.Ctrl {
 		parts = append(parts, "ctrl")
 	}
@@ -252,8 +252,8 @@ func (kc *KeyCombination) String() string {
 	if kc.Shift {
 		parts = append(parts, "shift")
 	}
-	
+
 	parts = append(parts, kc.Key)
-	
+
 	return strings.Join(parts, "+")
 }

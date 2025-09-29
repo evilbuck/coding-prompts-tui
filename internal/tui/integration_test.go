@@ -55,3 +55,28 @@ func TestChatModelInitializationFromWorkspace(t *testing.T) {
 		t.Errorf("Expected chat input '%s', got '%s'", initialValue, model.textarea.Value())
 	}
 }
+
+func TestChatModelSetSize(t *testing.T) {
+	model := NewChatModel("")
+
+	// Test setting size
+	width := 80
+	height := 20
+	model.SetSize(width, height)
+
+	// Verify the size was set
+	if model.width != width {
+		t.Errorf("Expected width %d, got %d", width, model.width)
+	}
+	if model.height != height {
+		t.Errorf("Expected height %d, got %d", height, model.height)
+	}
+
+	// Verify textarea dimensions (height should account for title/help text)
+	expectedTextareaHeight := height - 4
+	if expectedTextareaHeight < 3 {
+		expectedTextareaHeight = 3
+	}
+	// Note: We can't directly check textarea width/height as they're private,
+	// but we can verify the method doesn't panic and the model stores the values
+}

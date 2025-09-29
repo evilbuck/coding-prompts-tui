@@ -63,7 +63,7 @@ func (m *Manager) GetAvailablePersonas() []string {
 func (m *Manager) ValidatePersonas(personas []string) []string {
 	var valid []string
 	personaSet := make(map[string]bool)
-	
+
 	// Create a set of available personas for quick lookup
 	for _, p := range m.personas {
 		personaSet[p] = true

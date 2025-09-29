@@ -87,4 +87,3 @@ func CreatePanel(content string, focused bool, normalStyle, focusedStyle lipglos
 	style := FocusStyle(focused, normalStyle, focusedStyle)
 	return PanelStyle(style, width, height).Render(content)
 }
-

@@ -60,7 +60,7 @@ func TestBuild(t *testing.T) {
 
 	// 3. Define the inputs for the Build function
 	selectedFiles := map[string]bool{
-		filepath.Join(tmpDir, "testfile1.txt"):             true,
+		filepath.Join(tmpDir, "testfile1.txt"):           true,
 		filepath.Join(tmpDir, "subdir", "testfile2.txt"): false, // This one is not selected
 	}
 	userPrompt := "This is a test user prompt."
@@ -507,7 +507,7 @@ func TestFileTreeFormat(t *testing.T) {
 		t.Fatal("Could not find filetree CDATA section in XML")
 	}
 
-	filetreeContent := xmlOutput[start+len("<filetree><![CDATA["):end]
+	filetreeContent := xmlOutput[start+len("<filetree><![CDATA[") : end]
 	lines := strings.Split(strings.TrimSpace(filetreeContent), "\n")
 
 	// Validate file tree structure and indentation
@@ -584,13 +584,13 @@ func TestFileTreeFormat(t *testing.T) {
 func TestGetProjectOverview(t *testing.T) {
 	t.Run("CLAUDE.md exists", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		claudeContent := "This is the CLAUDE.md file."
 		err := os.WriteFile(filepath.Join(tmpDir, "CLAUDE.md"), []byte(claudeContent), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write CLAUDE.md: %v", err)
 		}
-		
+
 		// Also create GEMINI.md and README.md to test priority
 		err = os.WriteFile(filepath.Join(tmpDir, "GEMINI.md"), []byte("This is GEMINI.md"), 0644)
 		if err != nil {
@@ -600,90 +600,90 @@ func TestGetProjectOverview(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to write README.md: %v", err)
 		}
-		
+
 		content, err := getProjectOverview(tmpDir)
 		if err != nil {
 			t.Fatalf("getProjectOverview returned error: %v", err)
 		}
-		
+
 		if content != claudeContent {
 			t.Errorf("Expected content '%s', got '%s'", claudeContent, content)
 		}
 	})
-	
+
 	t.Run("GEMINI.md exists (no CLAUDE.md)", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		geminiContent := "This is the GEMINI.md file."
 		err := os.WriteFile(filepath.Join(tmpDir, "GEMINI.md"), []byte(geminiContent), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write GEMINI.md: %v", err)
 		}
-		
+
 		// Also create README.md to test priority
 		err = os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("This is README.md"), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write README.md: %v", err)
 		}
-		
+
 		content, err := getProjectOverview(tmpDir)
 		if err != nil {
 			t.Fatalf("getProjectOverview returned error: %v", err)
 		}
-		
+
 		if content != geminiContent {
 			t.Errorf("Expected content '%s', got '%s'", geminiContent, content)
 		}
 	})
-	
+
 	t.Run("README.md exists (no CLAUDE.md or GEMINI.md)", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		readmeContent := "This is the README.md file."
 		err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte(readmeContent), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write README.md: %v", err)
 		}
-		
+
 		content, err := getProjectOverview(tmpDir)
 		if err != nil {
 			t.Fatalf("getProjectOverview returned error: %v", err)
 		}
-		
+
 		if content != readmeContent {
 			t.Errorf("Expected content '%s', got '%s'", readmeContent, content)
 		}
 	})
-	
+
 	t.Run("no overview files exist", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		content, err := getProjectOverview(tmpDir)
 		if err != nil {
 			t.Fatalf("getProjectOverview returned error: %v", err)
 		}
-		
+
 		if content != "" {
 			t.Errorf("Expected empty content, got '%s'", content)
 		}
 	})
-	
+
 	t.Run("overview file exists but is unreadable", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		
+
 		claudeFile := filepath.Join(tmpDir, "CLAUDE.md")
 		err := os.WriteFile(claudeFile, []byte("content"), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write CLAUDE.md: %v", err)
 		}
-		
+
 		// Remove read permissions
 		err = os.Chmod(claudeFile, 0000)
 		if err != nil {
 			t.Fatalf("Failed to change file permissions: %v", err)
 		}
 		defer os.Chmod(claudeFile, 0644) // Restore for cleanup
-		
+
 		_, err = getProjectOverview(tmpDir)
 		if err == nil {
 			t.Error("Expected error for unreadable overview file, got nil")
@@ -750,7 +750,7 @@ test_*.go
 		if err != nil {
 			t.Fatalf("Failed to create ignored directory %s: %v", dir, err)
 		}
-		
+
 		// Add files inside ignored directories
 		err = os.WriteFile(filepath.Join(dirPath, "content.txt"), []byte("should be ignored"), 0644)
 		if err != nil {
@@ -809,12 +809,12 @@ test_*.go
 		t.Fatal("Could not find filetree CDATA section in XML")
 	}
 
-	filetreeContent := xmlOutput[start+len("<filetree><![CDATA["):end]
+	filetreeContent := xmlOutput[start+len("<filetree><![CDATA[") : end]
 
 	// Verify that IGNORED files are NOT in the file tree
 	ignoredItems := []string{
 		"error.log",
-		"temp.tmp", 
+		"temp.tmp",
 		"app.test",
 		".DS_Store",
 		"debug_main.go",
@@ -834,7 +834,7 @@ test_*.go
 	// Verify that ALLOWED files ARE in the file tree
 	allowedItems := []string{
 		"main.go",
-		"README.md", 
+		"README.md",
 		"config.json",
 		"src/",
 		"app.go",

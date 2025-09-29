@@ -75,60 +75,15 @@ func (m *SelectedFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the selected files panel
 func (m *SelectedFilesModel) View() string {
 	var b strings.Builder
-	
-	// Title row with clear button
+
+	// Title row
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("10"))
-	
-	// Create clear button
-	buttonStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("69")).
-		Foreground(lipgloss.Color("15")).
-		Background(lipgloss.Color("235")).
-		Padding(0, 1)
-	
-	clearButton := buttonStyle.Render("Clear All")
-	
-	// Calculate spacing to center button in title row
+
 	titleText := titleStyle.Render(m.title)
-	// Use a reasonable panel width (will be constrained by actual panel width)
-	panelWidth := 60 // This will be adjusted based on actual panel constraints
-	
-	// Calculate center position
-	titleWidth := lipgloss.Width(titleText)
-	buttonWidth := lipgloss.Width(clearButton)
-	totalContentWidth := titleWidth + buttonWidth + 4 // +4 for spacing around button
-	
-	var titleRow string
-	if totalContentWidth < panelWidth {
-		leftPadding := (panelWidth - totalContentWidth) / 2
-		spaceBetween := 4 // Space between title and button
-		
-		// Title row with centered layout
-		titleRow = lipgloss.JoinHorizontal(
-			lipgloss.Left,
-			strings.Repeat(" ", leftPadding),
-			titleText,
-			strings.Repeat(" ", spaceBetween),
-			clearButton,
-		)
-	} else {
-		// Fallback: title on left, button on right
-		availableSpace := panelWidth - titleWidth - buttonWidth
-		if availableSpace < 1 {
-			availableSpace = 1
-		}
-		titleRow = lipgloss.JoinHorizontal(
-			lipgloss.Left,
-			titleText,
-			strings.Repeat(" ", availableSpace),
-			clearButton,
-		)
-	}
-	
-	b.WriteString(titleRow)
+
+	b.WriteString(titleText)
 	b.WriteString("\n\n")
 
 	// Help text - contextual based on whether files exist and are selected
@@ -137,7 +92,7 @@ func (m *SelectedFilesModel) View() string {
 		helpStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Italic(true)
-		
+
 		if len(m.files) == 0 {
 			b.WriteString(helpStyle.Render("No files selected"))
 		} else {
@@ -172,7 +127,7 @@ func (m *SelectedFilesModel) View() string {
 			if i == m.cursor {
 				fileStyle = fileStyle.Foreground(lipgloss.Color("69")).Bold(true)
 			}
-			
+
 			line.WriteString(fileStyle.Render(file.Name))
 
 			b.WriteString(line.String())
@@ -197,7 +152,7 @@ func (m *SelectedFilesModel) AddFile(name, path string) {
 			return // Already selected
 		}
 	}
-	
+
 	m.files = append(m.files, SelectedFile{
 		Name: name,
 		Path: path,
@@ -219,9 +174,9 @@ func (m *SelectedFilesModel) removeFile(index int) {
 	if index < 0 || index >= len(m.files) {
 		return
 	}
-	
+
 	m.files = append(m.files[:index], m.files[index+1:]...)
-	
+
 	// Adjust cursor if necessary
 	if m.cursor >= len(m.files) && len(m.files) > 0 {
 		m.cursor = len(m.files) - 1
@@ -241,7 +196,7 @@ func (m *SelectedFilesModel) ClearAllFiles() tea.Cmd {
 	// Clear all files
 	m.files = []SelectedFile{}
 	m.cursor = 0
-	
+
 	// Create a command that will notify the app about the clear action
 	return func() tea.Msg {
 		return ClearAllFilesMsg{}
@@ -268,7 +223,7 @@ func (m *SelectedFilesModel) formatKeysForDisplay(keys []string) string {
 	if len(keys) == 0 {
 		return ""
 	}
-	
+
 	// Convert key names to display names
 	displayKeys := make([]string, len(keys))
 	for i, key := range keys {
@@ -281,7 +236,7 @@ func (m *SelectedFilesModel) formatKeysForDisplay(keys []string) string {
 			displayKeys[i] = key
 		}
 	}
-	
+
 	// Join with slashes
 	return strings.Join(displayKeys, "/")
 }

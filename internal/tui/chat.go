@@ -17,6 +17,8 @@ type ChatInputMsg struct {
 type ChatModel struct {
 	title    string
 	textarea textarea.Model
+	width    int
+	height   int
 }
 
 // NewChatModel creates a new chat model
@@ -93,4 +95,17 @@ func (m *ChatModel) Focus() tea.Cmd {
 // Blur removes focus from the textarea
 func (m *ChatModel) Blur() {
 	m.textarea.Blur()
+}
+
+// SetSize sets the available width and height for the chat panel
+func (m *ChatModel) SetSize(width, height int) {
+	m.width = width
+	m.height = height
+	// Account for title and help text (roughly 4 lines)
+	textareaHeight := height - 4
+	if textareaHeight < 3 {
+		textareaHeight = 3 // Minimum height
+	}
+	m.textarea.SetWidth(width)
+	m.textarea.SetHeight(textareaHeight)
 }
