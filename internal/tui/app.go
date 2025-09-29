@@ -365,10 +365,12 @@ func (a *App) View() string {
 
 	// Show persona dialog if visible (takes priority over prompt dialog)
 	if a.personaDialog.IsVisible() {
-		// Use the overlay method to show dimmed background with centered dialog
-    overlayView := a.personaDialog.ViewAsSimpleOverlay(mainLayout)
-    // Render with alert notifications
-    return a.alertModel.Render(overlayView)
+		dialogView := a.personaDialog.View()
+		// Render dialog over the background using Lipgloss v2 Place
+		backgroundStyle := lipglossv2.NewStyle().SetString(mainLayout)
+		overlayView := lipglossv2.Place(a.width, a.height, lipglossv2.Center, lipglossv2.Center, dialogView, lipglossv2.WithWhitespaceStyle(backgroundStyle))
+		// Render with alert notifications
+		return a.alertModel.Render(overlayView)
 	}
 
 	// Show prompt dialog if visible

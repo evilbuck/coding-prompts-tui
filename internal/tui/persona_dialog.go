@@ -11,12 +11,10 @@ import (
 
 // PersonaDialogModel represents the persona selection dialog
 type PersonaDialogModel struct {
-	visible           bool
+	promptDialog      *PromptDialogModel
 	availablePersonas []string
 	selectedPersonas  map[string]bool
 	cursor            int
-	width             int
-	height            int
 	debugLogger       *log.Logger
 }
 
@@ -28,7 +26,7 @@ type PersonaSelectionMsg struct {
 // NewPersonaDialogModel creates a new persona dialog model
 func NewPersonaDialogModel() *PersonaDialogModel {
 	return &PersonaDialogModel{
-		visible:          false,
+		promptDialog:     NewPromptDialogModel(),
 		selectedPersonas: make(map[string]bool),
 		cursor:           0,
 		debugLogger:      nil,
@@ -53,23 +51,23 @@ func (m *PersonaDialogModel) SetActivePersonas(personas []string) {
 
 // Show displays the dialog
 func (m *PersonaDialogModel) Show() {
-	m.visible = true
+	content := m.generateDialogContent()
+	m.promptDialog.Show(content)
 }
 
 // Hide closes the dialog
 func (m *PersonaDialogModel) Hide() {
-	m.visible = false
+	m.promptDialog.Hide()
 }
 
 // IsVisible returns whether the dialog is visible
 func (m *PersonaDialogModel) IsVisible() bool {
-	return m.visible
+	return m.promptDialog.IsVisible()
 }
 
 // SetSize sets the dialog size for centering
 func (m *PersonaDialogModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.promptDialog.SetSize(width, height)
 }
 
 // SetDebugLogger sets the debug logger for the dialog
@@ -84,7 +82,7 @@ func (m *PersonaDialogModel) Init() tea.Cmd {
 
 // Update handles messages for the dialog
 func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) {
-	if !m.visible {
+	if !m.IsVisible() {
 		return m, nil
 	}
 
@@ -93,7 +91,7 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 		if m.debugLogger != nil {
 			m.debugLogger.Printf("PERSONA_DIALOG: Key pressed: %q", msg.String())
 		}
-		
+
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
@@ -101,16 +99,19 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 			} else {
 				m.cursor = len(m.availablePersonas) - 1
 			}
+			m.updateDialogContent()
 		case "down", "j":
 			if m.cursor < len(m.availablePersonas)-1 {
 				m.cursor++
 			} else {
 				m.cursor = 0
 			}
+			m.updateDialogContent()
 		case " ":
 			if m.cursor >= 0 && m.cursor < len(m.availablePersonas) {
 				persona := m.availablePersonas[m.cursor]
 				m.selectedPersonas[persona] = !m.selectedPersonas[persona]
+				m.updateDialogContent()
 			}
 		case "enter":
 			activePersonas := m.getActivePersonasList()
@@ -118,12 +119,17 @@ func (m *PersonaDialogModel) Update(msg tea.Msg) (*PersonaDialogModel, tea.Cmd) 
 			return m, func() tea.Msg {
 				return PersonaSelectionMsg{ActivePersonas: activePersonas}
 			}
-		case "escape":
+		case "escape", "ctrl+c", "q":
 			if m.debugLogger != nil {
 				m.debugLogger.Printf("PERSONA_DIALOG: Escape key pressed - hiding dialog")
 			}
 			m.Hide()
 			return m, nil
+		default:
+			// Let the underlying prompt dialog handle other keys (like scrolling)
+			var cmd tea.Cmd
+			m.promptDialog, cmd = m.promptDialog.Update(msg)
+			return m, cmd
 		}
 	}
 
@@ -144,32 +150,13 @@ func (m *PersonaDialogModel) getActivePersonasList() []string {
 	return active
 }
 
-// View renders the dialog (for backwards compatibility)
+// View renders the dialog
 func (m *PersonaDialogModel) View() string {
-	if !m.visible {
-		return ""
-	}
-	return m.renderPopover()
+	return m.promptDialog.View()
 }
 
-// ViewAsOverlay renders the dialog as a full-screen overlay with dimmed backdrop
-func (m *PersonaDialogModel) ViewAsOverlay(backgroundContent string) string {
-	if !m.visible {
-		return backgroundContent
-	}
-
-	// Create dimmed backdrop
-	backdrop := m.createDimmedBackdrop(backgroundContent)
-	
-	// Get the popover dialog
-	popover := m.renderPopover()
-	
-	// Center the popover over the backdrop
-	return m.centerPopover(backdrop, popover)
-}
-
-// renderPopover creates the dialog content with enhanced styling
-func (m *PersonaDialogModel) renderPopover() string {
+// generateDialogContent creates the persona selection content
+func (m *PersonaDialogModel) generateDialogContent() string {
 	var content strings.Builder
 	content.WriteString("Select Active Personas:\n\n")
 
@@ -186,7 +173,7 @@ func (m *PersonaDialogModel) renderPopover() string {
 		}
 
 		line := fmt.Sprintf("%s %s %s", cursor, checkbox, persona)
-		
+
 		// Highlight current selection
 		if i == m.cursor {
 			line = lipgloss.NewStyle().
@@ -196,153 +183,20 @@ func (m *PersonaDialogModel) renderPopover() string {
 		} else {
 			line = " " + line + " "
 		}
-		
+
 		content.WriteString(line + "\n")
 	}
 
 	content.WriteString("\n")
 	content.WriteString("Space: Toggle • Enter: Apply • Escape: Cancel")
 
-	// Create dialog box style with shadow effect
-	dialogStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("69")).
-		Background(lipgloss.Color("0")).     // Solid dark background
-		Foreground(lipgloss.Color("15")).    // Bright text
-		Padding(1, 2).
-		Width(40).                           // Fixed width for consistency
-		Align(lipgloss.Center)
-
-	// Add a subtle shadow effect
-	// shadowStyle := lipgloss.NewStyle().
-	// 	Background(lipgloss.Color("8")).
-	// 	MarginLeft(1).
-	// 	MarginTop(1)
-
-	dialog := dialogStyle.Render(content.String())
-	
-	// Create shadow by rendering a slightly offset version
-	// shadow := shadowStyle.Render(strings.Repeat(" ", lipgloss.Width(dialog)))
-	
-	// Combine dialog with shadow (simplified version)
-	return dialog
+	return content.String()
 }
 
-// createDimmedBackdrop applies a dimming effect to background content
-func (m *PersonaDialogModel) createDimmedBackdrop(content string) string {
-	lines := strings.Split(content, "\n")
-	dimmedLines := make([]string, len(lines))
-	
-	// Style to dim the background content
-	dimStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))  // Dark gray - makes content visible but dimmed
-	
-	for i, line := range lines {
-		dimmedLines[i] = dimStyle.Render(line)
+// updateDialogContent refreshes the dialog content after changes
+func (m *PersonaDialogModel) updateDialogContent() {
+	if m.IsVisible() {
+		content := m.generateDialogContent()
+		m.promptDialog.Show(content)
 	}
-	
-	return strings.Join(dimmedLines, "\n")
-}
-
-// centerPopover positions the popover in the center of the backdrop
-func (m *PersonaDialogModel) centerPopover(backdrop, popover string) string {
-	backdropLines := strings.Split(backdrop, "\n")
-	popoverLines := strings.Split(popover, "\n")
-	
-	// Calculate dimensions
-	backdropHeight := len(backdropLines)
-	popoverHeight := len(popoverLines)
-	
-	// Find the widest line in the popover for centering
-	popoverWidth := 0
-	for _, line := range popoverLines {
-		// Use visual width (accounting for ANSI codes)
-		width := lipgloss.Width(line)
-		if width > popoverWidth {
-			popoverWidth = width
-		}
-	}
-	
-	// Calculate center position
-	startRow := (backdropHeight - popoverHeight) / 2
-	if startRow < 0 {
-		startRow = 0
-	}
-	
-	// Create result by overlaying popover onto backdrop
-	result := make([]string, len(backdropLines))
-	copy(result, backdropLines)
-	
-	// Place popover lines
-	for i, popoverLine := range popoverLines {
-		targetRow := startRow + i
-		if targetRow >= len(result) {
-			break
-		}
-		
-		if m.width > 0 {
-			// Center horizontally
-			startCol := (m.width - popoverWidth) / 2
-			if startCol < 0 {
-				startCol = 0
-			}
-			
-			// For simplicity, replace the entire line with centered popover content
-			padding := strings.Repeat(" ", startCol)
-			result[targetRow] = padding + popoverLine
-		} else {
-			// No width info, just place at start
-			result[targetRow] = popoverLine
-		}
-	}
-	
-	return strings.Join(result, "\n")
-}
-
-// Alternative simpler overlay approach for easier integration
-func (m *PersonaDialogModel) ViewAsSimpleOverlay(backgroundContent string) string {
-	if !m.visible {
-		return backgroundContent
-	}
-	
-	// Split content into lines
-	lines := strings.Split(backgroundContent, "\n")
-	
-	// Dim all background lines
-	for i, line := range lines {
-		lines[i] = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render(line)
-	}
-	
-	// Get popover content
-	popover := m.renderPopover()
-	popoverLines := strings.Split(popover, "\n")
-	
-	// Calculate where to place the popover (center)
-	startRow := (len(lines) - len(popoverLines)) / 2
-	if startRow < 0 {
-		startRow = 0
-	}
-	
-	// Overlay popover lines
-	for i, popoverLine := range popoverLines {
-		targetRow := startRow + i
-		if targetRow < len(lines) {
-			// Center the popover line
-			if m.width > 0 {
-				popoverWidth := lipgloss.Width(popoverLine)
-				padding := (m.width - popoverWidth) / 2
-				if padding > 0 {
-					lines[targetRow] = strings.Repeat(" ", padding) + popoverLine
-				} else {
-					lines[targetRow] = popoverLine
-				}
-			} else {
-				lines[targetRow] = popoverLine
-			}
-		}
-	}
-	
-	return strings.Join(lines, "\n")
 }
