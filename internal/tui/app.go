@@ -68,7 +68,7 @@ type App struct {
 	lastDebugInfo   string
 	debugLogger     *log.Logger
 	layoutConfig    *LayoutConfig
-	mode 						string
+	mode            string
 }
 
 // NewApp creates a new application instance
@@ -106,7 +106,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		debugMode:       settingsManager.IsDebugEnabled(), // Set from config
 		debugLogger:     debugLogger,
 		layoutConfig:    NewLayoutConfig(),
-		mode:						 "normal",
+		mode:            "normal",
 	}
 	app.updateSelectedFilesFromSelection(fileTree.selected)
 
@@ -192,6 +192,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		a.workspace.SelectedFiles = newSelected
+		a.configManager.Save()
+		return a, nil
+
+	case ClearAllFilesMsg:
+		// Clear all selected files from both file tree and workspace state
+		for filePath := range a.fileTree.selected {
+			a.fileTree.selected[filePath] = false
+		}
+		a.fileTree.refreshItems()
+		// Clear workspace state
+		a.workspace.SelectedFiles = []string{}
 		a.configManager.Save()
 		return a, nil
 
@@ -366,9 +377,9 @@ func (a *App) View() string {
 	// Show persona dialog if visible (takes priority over prompt dialog)
 	if a.personaDialog.IsVisible() {
 		// Use the overlay method to show dimmed background with centered dialog
-    overlayView := a.personaDialog.ViewAsSimpleOverlay(mainLayout)
-    // Render with alert notifications
-    return a.alertModel.Render(overlayView)
+		overlayView := a.personaDialog.ViewAsSimpleOverlay(mainLayout)
+		// Render with alert notifications
+		return a.alertModel.Render(overlayView)
 	}
 
 	// Show prompt dialog if visible
@@ -564,7 +575,6 @@ func (a *App) handleMouseClick(x, y int) tea.Cmd {
 	}
 
 	var targetFocus FocusedPanel
-	// Check if click is in the top panel area (file tree or chat panels)
 	if y < headerHeight+topHeight {
 		// Check if click is in the left half (file tree panel)
 		if x < leftWidth {

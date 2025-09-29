@@ -76,11 +76,59 @@ func (m *SelectedFilesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *SelectedFilesModel) View() string {
 	var b strings.Builder
 	
-	// Title
+	// Title row with clear button
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("10"))
-	b.WriteString(titleStyle.Render(m.title))
+	
+	// Create clear button
+	buttonStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("69")).
+		Foreground(lipgloss.Color("15")).
+		Background(lipgloss.Color("235")).
+		Padding(0, 1)
+	
+	clearButton := buttonStyle.Render("Clear All")
+	
+	// Calculate spacing to center button in title row
+	titleText := titleStyle.Render(m.title)
+	// Use a reasonable panel width (will be constrained by actual panel width)
+	panelWidth := 60 // This will be adjusted based on actual panel constraints
+	
+	// Calculate center position
+	titleWidth := lipgloss.Width(titleText)
+	buttonWidth := lipgloss.Width(clearButton)
+	totalContentWidth := titleWidth + buttonWidth + 4 // +4 for spacing around button
+	
+	var titleRow string
+	if totalContentWidth < panelWidth {
+		leftPadding := (panelWidth - totalContentWidth) / 2
+		spaceBetween := 4 // Space between title and button
+		
+		// Title row with centered layout
+		titleRow = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			strings.Repeat(" ", leftPadding),
+			titleText,
+			strings.Repeat(" ", spaceBetween),
+			clearButton,
+		)
+	} else {
+		// Fallback: title on left, button on right
+		availableSpace := panelWidth - titleWidth - buttonWidth
+		if availableSpace < 1 {
+			availableSpace = 1
+		}
+		titleRow = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			titleText,
+			strings.Repeat(" ", availableSpace),
+			clearButton,
+		)
+	}
+	
+	b.WriteString(titleRow)
 	b.WriteString("\n\n")
 
 	// Help text - contextual based on whether files exist and are selected
@@ -188,10 +236,25 @@ func (m *SelectedFilesModel) GetSelectedFiles() []SelectedFile {
 	return m.files
 }
 
+// ClearAllFiles removes all files from the selected files list
+func (m *SelectedFilesModel) ClearAllFiles() tea.Cmd {
+	// Clear all files
+	m.files = []SelectedFile{}
+	m.cursor = 0
+	
+	// Create a command that will notify the app about the clear action
+	return func() tea.Msg {
+		return ClearAllFilesMsg{}
+	}
+}
+
 // FileDeselectionMsg represents a message about file deselection
 type FileDeselectionMsg struct {
 	FilePath string
 }
+
+// ClearAllFilesMsg represents a message about clearing all selected files
+type ClearAllFilesMsg struct{}
 
 // sendFileDeselectionUpdate creates a file deselection update message
 func (m *SelectedFilesModel) sendFileDeselectionUpdate(filePath string) tea.Cmd {
