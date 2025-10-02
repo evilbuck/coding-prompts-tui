@@ -42,6 +42,7 @@ type ModeBindings struct {
 	Activation  string `toml:"activation,omitempty"`
 	Exit        string `toml:"exit,omitempty"`
 	PersonaMenu string `toml:"persona_menu,omitempty"`
+	HelpMenu    string `toml:"help_menu,omitempty"`
 	Tab         string `toml:"tab,omitempty"`
 	ShiftTab    string `toml:"shift_tab,omitempty"`
 }
@@ -153,6 +154,9 @@ func (m *SettingsManager) applyDefaults(settings *UserSettings) {
 	}
 	if settings.Bindings.NormalMode.ShiftTab == "" {
 		settings.Bindings.NormalMode.ShiftTab = defaults.Bindings.NormalMode.ShiftTab
+	}
+	if settings.Bindings.NormalMode.HelpMenu == "" {
+		settings.Bindings.NormalMode.HelpMenu = defaults.Bindings.NormalMode.HelpMenu
 	}
 
 	// Apply UI defaults
@@ -304,6 +308,13 @@ func (m *SettingsManager) GetMenuModePersonaMenu() string {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	return m.settings.Bindings.MenuMode.PersonaMenu
+}
+
+// GetHelpMenuKey returns the help menu key binding (thread-safe)
+func (m *SettingsManager) GetHelpMenuKey() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	return m.settings.Bindings.NormalMode.HelpMenu
 }
 
 // IsLegacyMode returns true if using legacy single-character bindings
@@ -493,7 +504,8 @@ func (m *SettingsManager) hasBindingsChanged(old, new *KeyBindings) bool {
 
 	// Check normal mode bindings
 	if old.NormalMode.Tab != new.NormalMode.Tab ||
-		old.NormalMode.ShiftTab != new.NormalMode.ShiftTab {
+		old.NormalMode.ShiftTab != new.NormalMode.ShiftTab ||
+		old.NormalMode.HelpMenu != new.NormalMode.HelpMenu {
 		return true
 	}
 
@@ -526,6 +538,7 @@ func getDefaultSettings() *UserSettings {
 			NormalMode: ModeBindings{
 				Tab:      "tab",
 				ShiftTab: "shift+tab",
+				HelpMenu: "?",
 			},
 			// Legacy defaults for backward compatibility
 			MenuActivation: "",

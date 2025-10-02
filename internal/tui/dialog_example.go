@@ -23,6 +23,7 @@ func ExampleListDialog() *Dialog {
 	config := DefaultDialogConfig()
 	config.Title = "Select Options"
 	config.HelpText = "Space: Toggle • Enter: Apply • Escape: Cancel"
+	// config.Alignment = lipgloss.Center // Optional: center the content
 
 	// Create and return the dialog
 	return NewDialog(config, listContent)

@@ -16,6 +16,7 @@ type DialogConfig struct {
 	Dismissible bool   // Can be dismissed with escape key
 	ShowHelp    bool   // Show help text at bottom
 	HelpText    string // Custom help text, defaults to "Escape: Close"
+	Alignment   lipgloss.Position // Text alignment: lipgloss.Left, lipgloss.Center, lipgloss.Right
 }
 
 // DefaultDialogConfig returns sensible defaults for a dialog
@@ -27,6 +28,7 @@ func DefaultDialogConfig() DialogConfig {
 		Dismissible: true,
 		ShowHelp:    true,
 		HelpText:    "Escape: Close",
+		Alignment:   lipgloss.Left,
 	}
 }
 
@@ -214,7 +216,7 @@ func (d *Dialog) renderDialog() string {
 		Foreground(lipgloss.Color("15")).
 		Padding(1, 2).
 		Width(dialogWidth).
-		Align(lipgloss.Left)
+		Align(d.config.Alignment)
 
 	return dialogStyle.Render(contentStr)
 }

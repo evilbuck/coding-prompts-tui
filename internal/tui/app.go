@@ -59,6 +59,7 @@ type App struct {
 	chat            *ChatModel
 	promptDialog    *PromptDialogModel
 	personaDialog   *PersonaDialogModel
+	helpDialog      *Dialog
 	alertModel      bubbleup.AlertModel
 	configManager   *config.ConfigManager
 	settingsManager *config.SettingsManager
@@ -90,6 +91,25 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 	personaDialog.SetActivePersonas(workspace.ActivePersonas)
 	personaDialog.SetDebugLogger(debugLogger)
 
+	// Initialize help dialog
+	helpContent := `Keyboard Shortcuts
+
+? - Show this help menu
+Ctrl+Y - Copy the current prompt to clipboard
+
+Tab - Switch between panels
+Shift+Tab - Switch between panels (reverse)
+
+Escape - Close dialogs / Return to normal mode
+Alt+M - Enter menu mode (then press P for persona menu)`
+
+	helpTextContent := NewTextContent(helpContent)
+	helpConfig := DefaultDialogConfig()
+	helpConfig.Title = "Help - Keyboard Shortcuts"
+	helpConfig.HelpText = "↑/↓: Scroll • Escape: Close"
+	helpConfig.Alignment = lipgloss.Center
+	helpDialog := NewDialog(helpConfig, helpTextContent)
+
 	app := &App{
 		targetDir:       targetDir,
 		focused:         FileTreePanel,
@@ -98,6 +118,7 @@ func NewApp(targetDir string, cfgManager *config.ConfigManager, settingsManager 
 		chat:            chat,
 		promptDialog:    NewPromptDialogModel(),
 		personaDialog:   personaDialog,
+		helpDialog:      helpDialog,
 		alertModel:      *bubbleup.NewAlertModel(40, true), // Will be updated dynamically on window resize
 		configManager:   cfgManager,
 		settingsManager: settingsManager,
@@ -120,6 +141,7 @@ func (a *App) Init() tea.Cmd {
 		a.selectedFiles.Init(),
 		a.chat.Init(),
 		a.personaDialog.Init(),
+		a.helpDialog.Init(),
 		a.alertModel.Init(),
 	)
 }
@@ -230,6 +252,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, alertCmd
 		}
 
+		// Handle help dialog trigger
+		if msg.String() == a.settingsManager.GetHelpMenuKey() {
+			a.helpDialog.Show()
+			return a, nil
+		}
+
 		// Handle persona dialog input if visible
 		if a.personaDialog.IsVisible() {
 			if a.debugLogger != nil {
@@ -247,6 +275,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.promptDialog.IsVisible() {
 			model, cmd := a.promptDialog.Update(msg)
 			a.promptDialog = model
+			return a, cmd
+		}
+
+		// Handle help dialog input if visible
+		if a.helpDialog.IsVisible() {
+			model, cmd := a.helpDialog.Update(msg)
+			a.helpDialog = model
 			return a, cmd
 		}
 
@@ -377,6 +412,13 @@ func (a *App) View() string {
 		// Render dialog over the background using Lipgloss v2 Place
 		backgroundStyle := lipglossv2.NewStyle().SetString(mainLayout)
 		overlayView := lipglossv2.Place(a.width, a.height, lipglossv2.Center, lipglossv2.Center, dialogView, lipglossv2.WithWhitespaceStyle(backgroundStyle))
+		// Render with alert notifications
+		return a.alertModel.Render(overlayView)
+	}
+
+	// Show help dialog if visible (lowest priority)
+	if a.helpDialog.IsVisible() {
+		overlayView := a.helpDialog.ViewAsSimpleOverlay(mainLayout)
 		// Render with alert notifications
 		return a.alertModel.Render(overlayView)
 	}
@@ -845,6 +887,7 @@ func (a *App) handleStateChange(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update dialogs with new size
 			a.promptDialog.SetSize(msg.Width, msg.Height)
 			a.personaDialog.SetSize(msg.Width, msg.Height)
+			a.helpDialog.SetSize(msg.Width, msg.Height)
 
 			// Update notification width to 30% of interface width, with reasonable bounds
 			notificationWidth := int(float64(msg.Width) * 0.3)

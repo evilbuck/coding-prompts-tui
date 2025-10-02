@@ -23,6 +23,8 @@ persona_menu = "p"
 # Standard navigation bindings (active in normal mode)
 tab = "tab"
 shift_tab = "shift+tab"
+# Help menu trigger
+help_menu = "?"
 
 [ui]
 # Notification settings
